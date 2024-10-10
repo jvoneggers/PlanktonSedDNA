@@ -1,0 +1,324 @@
+---
+title: "Phytoplankton and zooplankton sedimentary DNA from Western United States"
+author: "Jordan Von Eggers"
+date: "`r Sys.Date()`"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Load packages 
+```{r}
+require(tidyverse)
+require(ggh4x)
+require(lubridate)
+suppressMessages(source("5_DataAnalysis/packages.R"))
+```
+# Custom theme
+```{r}
+  custom_theme <- function() {
+  theme_bw() +
+    theme(
+      text = element_text(color = "black", size = 13),
+      axis.text = element_text(color = "black",size = 13),
+      axis.title = element_text(color = "black",size = 13),
+      axis.title.x = element_text(margin = margin(t = 10)),
+      axis.title.y = element_text(margin = margin(r = 10)),
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 12),
+      legend.text = element_text(size = 13),
+      legend.title = element_text(size = 13,hjust = 0.5),
+      strip.text = element_text(size = 13, color = "black"))}
+```
+
+
+# 1. Compile sample metadata
+```{r}
+# biogenic silica and C-H measurements
+
+# here I am reading in the sample list to help create unique biogenic silica error and C-H error measurements per lake. 
+sample_list <- read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/Core and sample information/Master/2024-10-10_MASTER_sample_id_list.csv") 
+bisi<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/Biogenic silica/results/MASTER_BiogenicSilica_FTIR_measurements.csv", header = T) %>% left_join(.,sample_list, by=join_by(sample_id)) %>% select(sample_id, replicate, FTIR_measurement, FTIR_value, lake_name) 
+
+bisi <- bisi %>%
+        group_by(sample_id) %>%
+        filter(all(c("R2", "R3") %in% replicate)) %>%
+        ungroup() %>%
+        group_by(sample_id, lake_name, FTIR_measurement) %>%
+        summarize(
+                range_FTIR_value = max(FTIR_value) - min(FTIR_value),
+                .groups = 'drop' ) %>%
+        group_by(lake_name, FTIR_measurement) %>%
+        summarize(
+                mean_range_FTIR_value = mean(range_FTIR_value),
+                max_range_FTIR_value = max(range_FTIR_value),
+                .groups = 'drop' ) %>%
+        # merge summary back into data
+        left_join(bisi,., by=join_by(lake_name, FTIR_measurement)) %>% 
+        # get the average for each sample and measurement for the replicates
+        group_by(sample_id,FTIR_measurement) %>% mutate(mean_FTIR_value=mean(FTIR_value)) %>% ungroup() %>% select(-c(FTIR_value, replicate)) %>% distinct(.) %>% left_join(.,sample_list, by=join_by(sample_id, lake_name)) %>% select(-c(lake_name,full_sample_code,lake_code,mountain_code,core,drive,top_cm,bottom_cm,mid_cm,rep_or_note)) %>%
+  pivot_wider(
+    names_from = FTIR_measurement, 
+    values_from = c(mean_range_FTIR_value, max_range_FTIR_value, mean_FTIR_value),
+    names_sep = "_"
+  ) %>%  rename_with(~ gsub("FTIR_value_", "", .)) %>% rename_with(~ gsub("BSi", "BiSi", .))
+
+
+table(bisi$sample_id%in%sample_list$sample_id) # all T
+metadata<-left_join(sample_list,bisi, join_by(sample_id)); rm(sample_list); rm(bisi)
+
+# 210Pb data
+pb<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/210Pb dating/210lead results/MASTER_2024-09-24_210Pb_2020_2021_cores.csv", header=T)
+table(pb$sample_id%in%metadata$sample_id) # all T
+metadata<-left_join(metadata,pb, join_by(sample_id)); rm(pb)
+
+# stable isotope data
+iso<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/Stable isotopes/SIF_results/MASTER_stable_isotopes_2020_2021_cores.csv")
+table(iso$sample_id%in%metadata$sample_id) # all T
+metadata<-left_join(metadata,iso, join_by(sample_id)); rm(iso)
+
+# LOI data
+loi<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/Subsampling and LOI/MASTER_loss_on_ignition_2015_2019-2021_cores.csv") %>% filter(mountain_lake_code%in%c("SNOW20_LOST20_1A_1G", "SNOW20_SCOT20_1A_1G","WIND20_BLRO20_1A_1G", "WIND20_CANY20_1A_1G" ,"WIND20_EYRI20_1A_1G", "WIND20_FOOT20_1A_1G","WIND20_LIGH20_1A_1G", "MORA21_CRES21_1A_1G", "MORA21_LOUI21_1A_1G",
+"NOCA21_MONO21_1A_1G", "SEKI21_BULL21_2A_1G", "YOSE21_MIGA21_1A_1G", "YOSE21_SKEL21_1A_1G", "YOSE21_SOLD21_1A_1G")) %>% select(-c(top_cm,bottom_cm,full_sample_code, year_cored))
+table(loi$sample_id%in%metadata$sample_id) # all T
+setdiff(loi$sample_id, metadata$sample_id) # these two samples were combined into SOLD21_0to1 so OK!
+metadata<-left_join(metadata,loi, join_by(sample_id)); rm(loi)
+
+# lake data
+lake<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/Core and sample information/Master/2024-10-10_MASTER_lake_data.csv")
+table(lake$lake_name%in%metadata$lake_name) # all T
+metadata<-left_join(metadata,lake, join_by(lake_name)); rm(lake)
+
+# remove lakes not included in this study
+metadata<-metadata %>% filter(!lake_name %in% c("Green Park Lake","Solitude", "Delta", "Lake of the Crags"))
+```
+662 samples from 14 lakes
+
+# 2. Model 210Pb dating
+
+Here I am:
+1. using Loess line to interpolate samples that did not have 210Pb measured but were within the range of 210Pb dating measurements
+2. extrapolating past the range of 210Pb dating using the dry mass accumulation rate (DMAR)
+3. creating three final columns that are a combination of the measured 210Pb dates, the interpolated dates, and extrapolated dates. 
+
+
+```{r}
+# indicate if 210Pb was measured for the sample
+pb <- metadata %>% mutate(lead210_measured=ifelse(is.na(lead210_measured)==T,"n","y"))
+
+# calculate density and rho for using with dry mass accumulation rate (DMAR)
+pb <- pb %>%
+        mutate(dry_perc=100-water_perc,
+               wet_density_g_cm3=wet_wt_g/volume_cm3,
+               all_rho_g_cm3=round(dry_perc/(dry_perc/2.4+water_perc),digits=4))
+
+# indicate if the part of the core is exact measurement, interpolated, or extrapolated
+# first calculate the deepest 210Pb measurement
+max_bottom_cm <- pb %>%
+  group_by(lake_name) %>%
+  filter(is.na(date_mid_AD) == F) %>%
+  summarize(max_bottom_cm_210Pb_dated = max(bottom_cm))
+
+# then calculate the shallowest 210Pb measurement (specifically for Soldier)
+min_bottom_cm <- pb %>%
+  group_by(lake_name) %>%
+  filter(is.na(date_mid_AD) == F) %>%
+  summarize(min_bottom_cm_210Pb_dated = min(bottom_cm))
+
+
+# merge with main data frame
+pb<- left_join(pb,max_bottom_cm, by=join_by(lake_name)); rm(max_bottom_cm) # max
+pb<- left_join(pb,min_bottom_cm, by=join_by(lake_name)); rm(min_bottom_cm) # min
+
+pb <- pb %>% group_by(lake_name) %>%
+        mutate(date_type=ifelse(bottom_cm>max_bottom_cm_210Pb_dated,"extrapolated",
+                                ifelse(lead210_measured=="y","measured",
+                                        ifelse(lead210_measured=="n","interpolated",NA ))))
+
+
+
+# use Loess line to predict interpolated values (middle of sample)
+
+interpolated_dates_mid <- pb %>%
+        group_by(lake_name) %>%
+        do({
+        loess_fit_mean <- loess(date_mid_AD ~ mid_cm, data = .)
+        loess_fit_sd <- loess(error_of_age_sd ~ mid_cm, data = .)
+        new_data <- data.frame(mid_cm = seq(unique(.$min_bottom_cm_210Pb_dated), unique(.$max_bottom_cm_210Pb_dated) - 0.25, by = 0.5))
+        new_data$interpolated_date_mid_AD <- round(predict(loess_fit_mean, newdata = new_data),digits=2)
+        new_data$interpolated_error_of_age_sd <- round(predict(loess_fit_sd, newdata = new_data), digits=3)
+        new_data$lake_name <- .$lake_name[1] 
+        new_data
+        }) %>%
+        unnest(cols = c(interpolated_date_mid_AD, interpolated_error_of_age_sd, mid_cm, lake_name))
+
+# use Loess line to predict interpolated values (base/bottom of sample)
+interpolated_dates_base <- pb  %>%
+        group_by(lake_name) %>%
+        do({
+        loess_fit_mean <- loess(date_base_AD ~ mid_cm, data = .)
+        new_data <- data.frame(mid_cm = seq(unique(.$min_bottom_cm_210Pb_dated), unique(.$max_bottom_cm_210Pb_dated) - 0.25, by = 0.5))
+        new_data$interpolated_date_base_AD <- round(predict(loess_fit_mean, newdata = new_data),digits=2)
+        new_data$lake_name <- .$lake_name[1] 
+        new_data
+        }) %>%
+        unnest(cols = c(interpolated_date_base_AD, mid_cm, lake_name))
+
+# add in a column for the top sediment date (used approximate date when cored 2020.6 (end of July) for top of sediment since this will be just used to approximate the top of the interval for prism data)
+
+# function to convert date to decimal year
+decimal_year <- function(date) {
+  year <- year(date)
+  start_of_year <- ymd(paste0(year, "-01-01"))
+  days_in_year <- ifelse(leap_year(date), 366, 365) # Account for leap years
+  fractional_year <- as.numeric(difftime(date, start_of_year, units = "days")) / days_in_year
+  year + fractional_year
+} 
+
+#make a dataframe that has the decimal year for each lake
+date_cored <- pb %>%
+  select(lake_name,date_cored) %>% distinct(.) %>%  mutate(decimal_year=decimal_year(dmy(date_cored))) %>% select(-date_cored)
+        
+# add it to the interpolated_dates_base dataframe
+interpolated_dates_base <-left_join(interpolated_dates_base,date_cored, join_by(lake_name)); rm(date_cored)
+
+interpolated_dates_base <- interpolated_dates_base %>% group_by(lake_name) %>% mutate(interpolated_date_top_AD = c(decimal_year[1],interpolated_date_base_AD[1:length(interpolated_date_base_AD)-1])) %>% select(-decimal_year)
+
+rm(decimal_year) # remove this function
+
+# join the two columns for the middle date and the base date
+interpolated_dates<-inner_join(interpolated_dates_mid,interpolated_dates_base, by=join_by(lake_name,mid_cm)); rm(interpolated_dates_mid); rm(interpolated_dates_base)
+
+# merge back the interpolated dates
+pb <-left_join(pb, as.data.frame(interpolated_dates), by=join_by(lake_name, mid_cm)); rm(interpolated_dates)
+
+# extrapolate using the DMAR
+# calculate the average DMAR for the last three samples
+average_DMAR <- pb %>%
+  group_by(lake_name) %>%
+  filter(is.na(DMAR_g_cm2_yr) == F) %>%
+  reframe(mean_DMAR_g_cm2_yr_bottom3 = mean(tail(DMAR_g_cm2_yr, n = 3)),
+        mean_error_DMAR_sd_bottom3 = mean(tail(error_DMAR_sd, n = 3)),
+        mean_DMAR_g_cm2_yr_bottom3_max = mean_DMAR_g_cm2_yr_bottom3 + mean_error_DMAR_sd_bottom3,
+        mean_DMAR_g_cm2_yr_bottom3_min = mean_DMAR_g_cm2_yr_bottom3 - mean_error_DMAR_sd_bottom3,
+        bottom_interpolated_error= tail(interpolated_error_of_age_sd,n=1),
+        bottom_measured_date_mid_AD = tail(date_mid_AD, n=1)) %>%
+        mutate(mean_DMAR_g_cm2_yr_bottom3_min = ifelse(mean_DMAR_g_cm2_yr_bottom3_min<0,0.01,mean_DMAR_g_cm2_yr_bottom3_min))
+# used error of DMAR 0.001 because range for this data is 0.00024 0.03320 and using 0 produced -Inf
+
+
+# join back to the main dataframe
+pb <- left_join(pb, average_DMAR, by=join_by(lake_name)); rm(average_DMAR)
+
+# calculate the accumulation rate 
+pb <- pb %>%
+        mutate(thickness=bottom_cm-top_cm,
+               # calculate the mean DMAR 
+               accumulation_rate_cm_yr=ifelse(date_type=="extrapolated",mean_DMAR_g_cm2_yr_bottom3 /all_rho_g_cm3, NA),
+               years_per_thickness=thickness/accumulation_rate_cm_yr,
+               # calculate the mean error for DMAR 
+               accumulation_rate_max_cm_yr=ifelse(date_type=="extrapolated",mean_DMAR_g_cm2_yr_bottom3_max /all_rho_g_cm3, NA),
+               accumulation_rate_min_cm_yr=ifelse(date_type=="extrapolated",mean_DMAR_g_cm2_yr_bottom3_min /all_rho_g_cm3, NA),
+               years_per_thickness_max=thickness/accumulation_rate_max_cm_yr,
+               years_per_thickness_min=thickness/accumulation_rate_min_cm_yr)
+        
+extrapolated_dates <- pb %>% group_by(lake_name) %>% filter(date_type=="extrapolated") %>%
+        mutate(cumulative_years = cumsum(years_per_thickness),
+               extrapolated_date_mid_AD = round(bottom_measured_date_mid_AD - cumulative_years,digits=2),
+               # using error of DMAR
+               cumulative_years_max = cumsum(years_per_thickness_max),
+               extrapolated_date_mid_AD_max = round(bottom_measured_date_mid_AD - cumulative_years_max,digits=2),
+                cumulative_years_min = cumsum(years_per_thickness_min),
+               extrapolated_date_mid_AD_min = round(bottom_measured_date_mid_AD - cumulative_years_min,digits=2))%>% 
+        ungroup() %>%  select(sample_id,cumulative_years, extrapolated_date_mid_AD, cumulative_years_max, extrapolated_date_mid_AD_max,  cumulative_years_min, extrapolated_date_mid_AD_min)
+
+# join back to the main dataframe
+pb <- left_join(pb, extrapolated_dates, by=join_by(sample_id)); rm(extrapolated_dates)
+
+# create one column for the measured, interpolated, and extrapolated dates
+pb <- pb %>% 
+        mutate(date_mid_AD_combo=case_when(date_type=="measured" ~ date_mid_AD,
+                                           date_type=="extrapolated" ~ extrapolated_date_mid_AD,
+                                           date_type=="interpolated" ~ interpolated_date_mid_AD),
+               date_mid_AD_min_combo= case_when(date_type=="measured" ~ date_mid_AD - error_of_age_sd,
+                                           date_type=="extrapolated" ~ extrapolated_date_mid_AD_min- bottom_interpolated_error,
+                                           date_type=="interpolated" ~ interpolated_date_mid_AD - interpolated_error_of_age_sd),
+               date_mid_AD_max_combo= case_when(date_type=="measured" ~ date_mid_AD + error_of_age_sd,
+                                           date_type=="extrapolated" ~ extrapolated_date_mid_AD_max + bottom_interpolated_error,
+                                           date_type=="interpolated" ~ interpolated_date_mid_AD + interpolated_error_of_age_sd))
+pb <- as.data.frame(pb)
+
+write.csv(pb,paste0(Sys.Date(),"_sample_data_dates.csv"))
+rm(pb);rm(metadata)
+```
+
+
+
+# 3. Plot 210Pb dates
+```{r}
+pb <- read.csv(list.files(pattern = "*_sample_data_dates.csv", full.names = TRUE), row.names = 1, header = TRUE)
+
+# set colors for lakes
+lake_colors <- c("Canyon" = "#b9ceac", "Eyrie" = "darkolivegreen3", "Lightning" = "darkolivegreen", 
+                 "Black Rock" = "#FFBBFF", "Footprint" = "#CD96CD", "Lost" = "#9696CD", "Scott" = "#5D478B", 
+                 "Bullfrog"= "#BFEFFF", "Middle Gaylor"= "#8EE5EE", "Soldier"="#436EEE", "Skelton"="#63B8FF", 
+                 "Crescent"= "#EE6363", "Louise"="#FFA07A","Monogram"="#EE30A7")
+
+
+# filter for WY lakes
+lk <- pb %>%
+  mutate(lake_name = factor(lake_name, levels = names(lake_colors))) %>%
+  arrange(lake_name, mid_cm)
+
+# make dataframes of polygons
+poly <- data.frame()
+for (lake in unique(lk$lake_name)) {
+  lk_sub <- lk %>% filter(lake_name == lake)
+  poly <- rbind(poly, data.frame(
+    x = c(rev(lk_sub$date_mid_AD_min_combo), lk_sub$date_mid_AD_max_combo),
+    y = c(rev(lk_sub$mid_cm), lk_sub$mid_cm),
+    lake_name = lake
+  ))
+}
+poly$lake_name <- factor(poly$lake_name, levels = names(lake_colors))
+
+  custom_theme <- function() {
+  theme_bw() +
+    theme(
+      text = element_text(color = "black", size = 13),
+      axis.text = element_text(color = "black",size = 13),
+      axis.title = element_text(color = "black",size = 13),
+      axis.title.x = element_text(margin = margin(t = 10)),
+      axis.title.y = element_text(margin = margin(r = 10)),
+      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
+      plot.subtitle = element_text(hjust = 0.5, size = 12),
+      legend.text = element_text(size = 13),
+      legend.title = element_text(size = 13,hjust = 0.5),
+      strip.text = element_text(size = 13, color = "black"))}
+
+ggplot() +
+ # geom_polygon(data = poly, aes(x = x, y = y, fill = lake_name), alpha = 0.5)+
+  geom_line(data = lk, aes(x = date_mid_AD_combo, y = mid_cm, color = lake_name), size = 1.5) +
+  geom_point(data = filter(lk, date_type == "measured"), aes(x = date_mid_AD_combo, y = mid_cm), 
+             color = "black", size = 2) +
+  facet_wrap2(~ lake_name, ncol=7, strip.position = "top", strip=strip_themed(background_x = elem_list_rect(fill = lake_colors))) +
+  labs(x = "Date (Common Era)", y = "Depth (cm)")+
+ scale_y_reverse(limits = c(30, 0), breaks = seq(0, 30, 5)) +
+ custom_theme()+
+scale_color_manual(values = lake_colors) +
+  scale_fill_manual(values = lake_colors) +
+          theme(panel.grid.minor = element_blank(),
+                panel.grid.major = element_blank(),
+        strip.text.x = element_text(size = 12),
+        axis.text.x = element_text(angle = 60, vjust = 1, hjust = 1, color = "black", size = 12),
+        axis.text.y = element_text(color = "black", size = 12),
+        axis.title = element_text(size = 12),
+        legend.position = "none") +
+         # scale_x_continuous(breaks = c(seq(1000, 2000, 100), 2020),
+                   #  labels = c("1000" ,"", "1200" ,"", "1400" ,"", "1600" ,"", "1800" ,"", "2000","")) + 
+        geom_vline(data=lk[,names(lk) %in%c("lake_name","first_stocked_yr")] %>% unique(.) %>%  filter(complete.cases(.)), aes(xintercept=first_stocked_yr), color="black",linewidth=0.75)
+
+ggsave("3_Figures/FigX_210Pb_dates.png",height=5, width=14, units="in")
+
+```
+
