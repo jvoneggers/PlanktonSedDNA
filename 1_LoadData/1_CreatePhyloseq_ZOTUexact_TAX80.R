@@ -6,8 +6,8 @@ require(tidyverse)
 metadata<-read.csv(list.files(pattern = "*_sample_data_dates.csv", full.names = TRUE), row.names=1, header=T)
 
 ### b. read in V7 files
-rarefied_esv_table <- read.csv("2_DataCleaning/V7/2024-06-19_18S_V7_ZOTUexact_tax80_Rarefied_ESV_table.csv", row.names=1, header=T)
-taxonomy <- read.csv("2_DataCleaning/V7/2024-06-19_18S_V7_ZOTUexact_tax80_tax_table_notnorm.csv", row.names=1, header=T)
+rarefied_esv_table <- read.csv("1_LoadData/2024-06-19_18S_V7_ZOTUexact_tax80_Rarefied_ESV_table.csv", row.names=1, header=T)
+taxonomy <- read.csv("1_LoadData/2024-06-19_18S_V7_ZOTUexact_tax80_tax_table_notnorm.csv", row.names=1, header=T)
 
 ### c. Put into Phyloseq
 #put in "Unassigned" in blanks in taxa tab
@@ -40,8 +40,8 @@ rm(samp_dat)
 
 
 ### d. read in V9 files
-rarefied_esv_table <- read.csv("2_DataCleaning/V9/2024-06-19_18S_V9_ZOTUexact_tax80_Rarefied_ESV_table.csv", row.names=1, header=T)
-taxonomy <- read.csv("2_DataCleaning/V9/2024-06-19_18S_V9_ZOTUexact_tax80_tax_table_notnorm.csv", row.names=1, header=T)
+rarefied_esv_table <- read.csv("1_LoadData/2024-06-19_18S_V9_ZOTUexact_tax80_Rarefied_ESV_table.csv", row.names=1, header=T)
+taxonomy <- read.csv("1_LoadData/2024-06-19_18S_V9_ZOTUexact_tax80_tax_table_notnorm.csv", row.names=1, header=T)
 
 ### e. put into Phyloseq
 #put in "Unassigned" in blanks in taxa tab

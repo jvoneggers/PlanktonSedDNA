@@ -12,10 +12,9 @@ editor_options:
 require(tidyverse)
 require(ggh4x)
 require(lubridate)
-suppressMessages(source("5_DataAnalysis/packages.R"))
-```
-# Custom theme
-```{r}
+require(phyloseq)
+
+
   custom_theme <- function() {
   theme_bw() +
     theme(
@@ -29,6 +28,8 @@ suppressMessages(source("5_DataAnalysis/packages.R"))
       legend.text = element_text(size = 13),
       legend.title = element_text(size = 13,hjust = 0.5),
       strip.text = element_text(size = 13, color = "black"))}
+  
+source("1_LoadData/1_CreatePhyloseq_ZOTUexact_TAX80.R")
 ```
 
 
@@ -106,24 +107,29 @@ Here I am:
 # indicate if 210Pb was measured for the sample
 pb <- metadata %>% mutate(lead210_measured=ifelse(is.na(lead210_measured)==T,"n","y"))
 
+# remove the bottom Soldier sample dating back around 1850 because the error is ~350 years and is messing up extrapolation. 
+pb<-pb %>%  mutate(across(c(cum_dry_mass_g_cm2, unsup_210Pb_pCi_g, error_of_unsup_Pb_sd,age_base_of_interval_yr,error_of_age_sd,date_mid_AD,date_base_AD,DMAR_g_cm2_yr,error_DMAR_sd),
+                ~ ifelse(sample_id == "SOLD21_17", NA, .)))
+
 # calculate density and rho for using with dry mass accumulation rate (DMAR)
 pb <- pb %>%
         mutate(dry_perc=100-water_perc,
                wet_density_g_cm3=wet_wt_g/volume_cm3,
                all_rho_g_cm3=round(dry_perc/(dry_perc/2.4+water_perc),digits=4))
+# only wet density for Wind River and Snowy cores (maybe a few CA cores)
 
 # indicate if the part of the core is exact measurement, interpolated, or extrapolated
 # first calculate the deepest 210Pb measurement
 max_bottom_cm <- pb %>%
   group_by(lake_name) %>%
   filter(is.na(date_mid_AD) == F) %>%
-  summarize(max_bottom_cm_210Pb_dated = max(bottom_cm))
+  summarize(max_bottom_cm_210Pb_dated = max(bottom_cm))%>% ungroup()
 
 # then calculate the shallowest 210Pb measurement (specifically for Soldier)
 min_bottom_cm <- pb %>%
   group_by(lake_name) %>%
   filter(is.na(date_mid_AD) == F) %>%
-  summarize(min_bottom_cm_210Pb_dated = min(bottom_cm))
+  summarize(min_bottom_cm_210Pb_dated = min(bottom_cm))%>% ungroup()
 
 
 # merge with main data frame
@@ -133,9 +139,7 @@ pb<- left_join(pb,min_bottom_cm, by=join_by(lake_name)); rm(min_bottom_cm) # min
 pb <- pb %>% group_by(lake_name) %>%
         mutate(date_type=ifelse(bottom_cm>max_bottom_cm_210Pb_dated,"extrapolated",
                                 ifelse(lead210_measured=="y","measured",
-                                        ifelse(lead210_measured=="n","interpolated",NA ))))
-
-
+                                        ifelse(lead210_measured=="n","interpolated",NA )))) %>% ungroup()
 
 # use Loess line to predict interpolated values (middle of sample)
 
@@ -144,27 +148,27 @@ interpolated_dates_mid <- pb %>%
         do({
         loess_fit_mean <- loess(date_mid_AD ~ mid_cm, data = .)
         loess_fit_sd <- loess(error_of_age_sd ~ mid_cm, data = .)
-        new_data <- data.frame(mid_cm = seq(unique(.$min_bottom_cm_210Pb_dated), unique(.$max_bottom_cm_210Pb_dated) - 0.25, by = 0.5))
+        new_data <- data.frame(mid_cm = seq(unique(.$min_bottom_cm_210Pb_dated)- 0.25, unique(.$max_bottom_cm_210Pb_dated) - 0.25, by = 0.5))
         new_data$interpolated_date_mid_AD <- round(predict(loess_fit_mean, newdata = new_data),digits=2)
         new_data$interpolated_error_of_age_sd <- round(predict(loess_fit_sd, newdata = new_data), digits=3)
         new_data$lake_name <- .$lake_name[1] 
         new_data
         }) %>%
-        unnest(cols = c(interpolated_date_mid_AD, interpolated_error_of_age_sd, mid_cm, lake_name))
+        unnest(cols = c(interpolated_date_mid_AD, interpolated_error_of_age_sd, mid_cm, lake_name)) %>% ungroup()
 
 # use Loess line to predict interpolated values (base/bottom of sample)
 interpolated_dates_base <- pb  %>%
         group_by(lake_name) %>%
         do({
         loess_fit_mean <- loess(date_base_AD ~ mid_cm, data = .)
-        new_data <- data.frame(mid_cm = seq(unique(.$min_bottom_cm_210Pb_dated), unique(.$max_bottom_cm_210Pb_dated) - 0.25, by = 0.5))
+        new_data <- data.frame(mid_cm = seq(unique(.$min_bottom_cm_210Pb_dated)- 0.25, unique(.$max_bottom_cm_210Pb_dated) - 0.25, by = 0.5))
         new_data$interpolated_date_base_AD <- round(predict(loess_fit_mean, newdata = new_data),digits=2)
         new_data$lake_name <- .$lake_name[1] 
         new_data
         }) %>%
-        unnest(cols = c(interpolated_date_base_AD, mid_cm, lake_name))
+        unnest(cols = c(interpolated_date_base_AD, mid_cm, lake_name)) %>% ungroup()
 
-# add in a column for the top sediment date (used approximate date when cored 2020.6 (end of July) for top of sediment since this will be just used to approximate the top of the interval for prism data)
+# add in a column for the top sediment date (used to approximate the top of the interval for prism data)
 
 # function to convert date to decimal year
 decimal_year <- function(date) {
@@ -190,7 +194,8 @@ rm(decimal_year) # remove this function
 interpolated_dates<-inner_join(interpolated_dates_mid,interpolated_dates_base, by=join_by(lake_name,mid_cm)); rm(interpolated_dates_mid); rm(interpolated_dates_base)
 
 # merge back the interpolated dates
-pb <-left_join(pb, as.data.frame(interpolated_dates), by=join_by(lake_name, mid_cm)); rm(interpolated_dates)
+pb <-left_join(pb,as.data.frame(interpolated_dates), by=join_by(lake_name, mid_cm)); rm(interpolated_dates)
+
 
 # extrapolate using the DMAR
 # calculate the average DMAR for the last three samples
@@ -203,7 +208,7 @@ average_DMAR <- pb %>%
         mean_DMAR_g_cm2_yr_bottom3_min = mean_DMAR_g_cm2_yr_bottom3 - mean_error_DMAR_sd_bottom3,
         bottom_interpolated_error= tail(interpolated_error_of_age_sd,n=1),
         bottom_measured_date_mid_AD = tail(date_mid_AD, n=1)) %>%
-        mutate(mean_DMAR_g_cm2_yr_bottom3_min = ifelse(mean_DMAR_g_cm2_yr_bottom3_min<0,0.01,mean_DMAR_g_cm2_yr_bottom3_min))
+        mutate(mean_DMAR_g_cm2_yr_bottom3_min = ifelse(mean_DMAR_g_cm2_yr_bottom3_min<0,0.01,mean_DMAR_g_cm2_yr_bottom3_min)) 
 # used error of DMAR 0.001 because range for this data is 0.00024 0.03320 and using 0 produced -Inf
 
 
@@ -251,7 +256,7 @@ pb <- as.data.frame(pb)
 write.csv(pb,paste0(Sys.Date(),"_sample_data_dates.csv"))
 rm(pb);rm(metadata)
 ```
-
+I am thinking here that I should just not include that final value and see how this looks for Soldier lake
 
 
 # 3. Plot 210Pb dates
@@ -265,10 +270,9 @@ lake_colors <- c("Canyon" = "#b9ceac", "Eyrie" = "darkolivegreen3", "Lightning" 
                  "Crescent"= "#EE6363", "Louise"="#FFA07A","Monogram"="#EE30A7")
 
 
-# filter for WY lakes
 lk <- pb %>%
   mutate(lake_name = factor(lake_name, levels = names(lake_colors))) %>%
-  arrange(lake_name, mid_cm)
+  arrange(lake_name, mid_cm) 
 
 # make dataframes of polygons
 poly <- data.frame()
@@ -280,6 +284,9 @@ for (lake in unique(lk$lake_name)) {
     lake_name = lake
   ))
 }
+poly <- poly %>% filter(!(lake_name == "Soldier" & y %in% c(1.25, 0.5))) # remove top Soldier samples without data
+
+
 poly$lake_name <- factor(poly$lake_name, levels = names(lake_colors))
 
   custom_theme <- function() {
@@ -297,7 +304,7 @@ poly$lake_name <- factor(poly$lake_name, levels = names(lake_colors))
       strip.text = element_text(size = 13, color = "black"))}
 
 ggplot() +
- # geom_polygon(data = poly, aes(x = x, y = y, fill = lake_name), alpha = 0.5)+
+ geom_polygon(data = poly, aes(x = x, y = y, fill = lake_name), alpha = 0.5)+
   geom_line(data = lk, aes(x = date_mid_AD_combo, y = mid_cm, color = lake_name), size = 1.5) +
   geom_point(data = filter(lk, date_type == "measured"), aes(x = date_mid_AD_combo, y = mid_cm), 
              color = "black", size = 2) +
@@ -314,11 +321,212 @@ scale_color_manual(values = lake_colors) +
         axis.text.y = element_text(color = "black", size = 12),
         axis.title = element_text(size = 12),
         legend.position = "none") +
-         # scale_x_continuous(breaks = c(seq(1000, 2000, 100), 2020),
-                   #  labels = c("1000" ,"", "1200" ,"", "1400" ,"", "1600" ,"", "1800" ,"", "2000","")) + 
+         coord_cartesian(xlim = c(0, 2022)) +
         geom_vline(data=lk[,names(lk) %in%c("lake_name","first_stocked_yr")] %>% unique(.) %>%  filter(complete.cases(.)), aes(xintercept=first_stocked_yr), color="black",linewidth=0.75)
 
 ggsave("3_Figures/FigX_210Pb_dates.png",height=5, width=14, units="in")
 
 ```
+Notes: min(poly$x)  -975.239, its monogram because it is so deep (38 cm), so cut off here at 30 cm while still reasonable
 
+# 4. Create phyloseq
+```{r}
+
+```
+
+# 5. NMDS
+This is a quick plotting with chatGPT, go back to old code and do in base R
+```{r}
+#nmds_V7 <- ps_V7_norm %>% ordinate(., method = "NMDS", distance = "bray")
+nmds_points <- as.data.frame(nmds_V7$points)  # Extract NMDS points
+nmds_points$sample_id <- rownames(nmds_points)  # Add sample IDs
+nmds_meta <- merge(nmds_points, metadata, by = "sample_id")
+lake_colors <- c("Canyon" = "#b9ceac", "Eyrie" = "darkolivegreen3", "Lightning" = "darkolivegreen", 
+                 "Black Rock" = "#FFBBFF", "Footprint" = "#CD96CD", "Lost" = "#9696CD", 
+                 "Scott" = "#5D478B", "Bullfrog" = "#BFEFFF", "Middle Gaylor" = "#8EE5EE", 
+                 "Soldier" = "#436EEE", "Skelton" = "#63B8FF", "Crescent" = "#EE6363", 
+                 "Louise" = "#FFA07A", "Monogram" = "#EE30A7")
+                 
+nmds_meta <- nmds_meta %>%
+  mutate(lake_name = factor(lake_name, levels = names(lake_colors)))  # Ensure lake_name is a factor
+
+nmds_meta<-nmds_meta %>%
+        arrange(mountain_range, fish, lake_name, bottom_cm) %>%
+        group_by(lake_name)%>%
+        mutate(fish_present_sample = ifelse(first_stocked_yr>=date_mid_AD_combo | is.na(first_stocked_yr) ==T, "fishless","fish")) %>% ungroup()
+
+
+ggplot(nmds_meta, aes(x = MDS1, y = MDS2, fill = lake_name, shape = fish_present_sample, color = fish_present_sample)) +
+  geom_point(size = 5, alpha = 0.8, stroke = 1.2) +  # Plot points with black outline for fish
+  scale_fill_manual(values = lake_colors) +  # Use lake colors for the fill
+  scale_color_manual(values = c("fish" = "black", "fishless" = NA)) +  # Black outline for fish, no outline for fishless
+  scale_shape_manual(values = c("fish" = 21, "fishless" = 21)) +  # Use shape 21 for filled points
+  labs(x = "NMDS1", y = "NMDS2", fill = "Lake name", color = "Fish status", shape = "Fish status") +  # Legend labels
+  guides(color = guide_legend(override.aes = list(fill = "black", size = 5)),  # Ensure black outline for fish in the legend
+         fill = guide_legend(override.aes = list(color = "black", shape = 21))) +  # Keep lake colors for fill
+  theme_minimal() +  # Minimal theme for a clean plot
+  theme(legend.position = "right")  # Legend on the right
+
+
+ggsave("3_Figures/FigX_NMDS_V7.png",height=6, width=8, units="in")
+
+nmds_V9 <- ps_V9_norm %>% ordinate(., method = "NMDS", distance = "bray")
+nmds_points <- as.data.frame(nmds_V9$points)  # Extract NMDS points
+nmds_points$sample_id <- rownames(nmds_points)  # Add sample IDs
+nmds_meta <- merge(nmds_points, metadata, by = "sample_id")
+lake_colors <- c("Canyon" = "#b9ceac", "Eyrie" = "darkolivegreen3", "Lightning" = "darkolivegreen", 
+                 "Black Rock" = "#FFBBFF", "Footprint" = "#CD96CD", "Lost" = "#9696CD", 
+                 "Scott" = "#5D478B", "Bullfrog" = "#BFEFFF", "Middle Gaylor" = "#8EE5EE", 
+                 "Soldier" = "#436EEE", "Skelton" = "#63B8FF", "Crescent" = "#EE6363", 
+                 "Louise" = "#FFA07A", "Monogram" = "#EE30A7")
+                 
+nmds_meta <- nmds_meta %>%
+  mutate(lake_name = factor(lake_name, levels = names(lake_colors)))  # Ensure lake_name is a factor
+
+nmds_meta<-nmds_meta %>%
+        arrange(mountain_range, fish, lake_name, bottom_cm) %>%
+        group_by(lake_name)%>%
+        mutate(fish_present_sample = ifelse(first_stocked_yr>=date_mid_AD_combo | is.na(first_stocked_yr) ==T, "fishless","fish")) %>% ungroup()
+
+
+ggplot(nmds_meta, aes(x = MDS1, y = MDS2, fill = lake_name, shape = fish_present_sample, color = fish_present_sample)) +
+  geom_point(size = 5, alpha = 0.8, stroke = 1.2) +  # Plot points with black outline for fish
+  scale_fill_manual(values = lake_colors) +  # Use lake colors for the fill
+  scale_color_manual(values = c("fish" = "black", "fishless" = NA)) +  # Black outline for fish, no outline for fishless
+  scale_shape_manual(values = c("fish" = 21, "fishless" = 21)) +  # Use shape 21 for filled points
+  labs(x = "NMDS1", y = "NMDS2", fill = "Lake name", color = "Fish status", shape = "Fish status") +  # Legend labels
+  guides(color = guide_legend(override.aes = list(fill = "black", size = 5)),  # Ensure black outline for fish in the legend
+         fill = guide_legend(override.aes = list(color = "black", shape = 21))) +  # Keep lake colors for fill
+  theme_minimal() +  # Minimal theme for a clean plot
+  theme(legend.position = "right")  # Legend on the right
+
+ggsave("3_Figures/FigX_NMDS_V9.png",height=6, width=8, units="in")
+
+```
+issue - there is an NA here
+
+# 6. Isotope 
+```{r}
+
+# Arrange metadata by mountain_range, fish, lake_name, and bottom_cm
+meta <- metadata %>% filter(isotope_run=="CN") %>%
+  arrange(state, fish, lake_name, bottom_cm) %>%
+  mutate(lake_name = factor(lake_name, levels = unique(lake_name)))  # Set lake_name as a factor based on the desired order
+
+# Plot with facet_wrap ordered by lake_name
+ggplot(data = meta, aes(x = date_mid_AD_combo, y = d15N)) +
+  geom_line() + 
+  geom_point() + 
+  geom_errorbar(aes(ymin = d15N - 0.4, ymax = d15N + 0.4)) +  # Add error bars
+  facet_wrap(~lake_name, nrow=2, ncol=7) +  
+  labs(x = "Year (Common Era)") + 
+  custom_theme()  
+
+ggsave("3_Figures/FigX_d15N.png",height=5, width=16, units="in")
+
+
+ggplot(data = meta, aes(x = date_mid_AD_combo, y =d13C)) +
+  geom_line() + 
+  geom_point() + 
+  facet_wrap(~lake_name, nrow=2, ncol=7) +  
+  labs(x = "Year (Common Era)") +  
+  custom_theme()  #
+
+ggsave("3_Figures/FigX_d13C.png",height=5, width=16, units="in")
+
+
+ggplot(data = meta, aes(x = date_mid_AD_combo, y =CN_ratio)) +
+  geom_line() + 
+  geom_point() + 
+  facet_wrap(~lake_name, nrow=2, ncol=7) +  
+  labs(x = "Year (Common Era)") +  
+  custom_theme()  #
+
+ggsave("3_Figures/FigX_CN.png",height=5, width=16, units="in")
+
+ggplot(data = meta, aes(x = date_mid_AD_combo, y =C_perc)) +
+  geom_line() + 
+  geom_point() + 
+  facet_wrap(~lake_name, nrow=2, ncol=7) +  
+  labs(x = "Year (Common Era)") + 
+  custom_theme()  
+
+ggsave("3_Figures/FigX_C_perc.png",height=5, width=16, units="in")
+
+ggplot(data = meta, aes(x = mean_C.H, y =C_perc)) +
+  geom_point() + 
+  facet_wrap(~lake_name, nrow=2, ncol=7) +  
+  labs(x = "Year (Common Era)") +  
+  custom_theme()  
+
+ggsave("3_Figures/FigX_C_perc_vs_CH.png",height=5, width=16, units="in")
+
+
+```
+
+# 7. Biogenic silica
+```{r}
+# Arrange metadata by mountain_range, fish, lake_name, and bottom_cm
+meta <- metadata %>% filter(is.na(mean_BiSi)==F) %>%
+  arrange(state, fish, lake_name, bottom_cm) %>%
+  mutate(lake_name = factor(lake_name, levels = unique(lake_name)))  
+
+
+ggplot(data = meta, aes(x = date_mid_AD_combo, y =mean_BiSi)) +
+  facet_wrap(~lake_name, nrow=2, ncol=7) + 
+        custom_theme() +
+        geom_ribbon(aes(ymin = mean_BiSi - (mean_range_BiSi / 2), 
+                        ymax = mean_BiSi + (mean_range_BiSi / 2)),
+                    fill="orange") +
+        geom_line() + 
+        geom_point() +
+        labs(x = "Year (Common Era)",
+             y="BiSi")
+
+ggsave("3_Figures/FigX_BiSi_mean_error.png",height=5, width=16, units="in")
+
+ggplot(data = meta, aes(x = date_mid_AD_combo, y =mean_BiSi)) +
+  facet_wrap(~lake_name, nrow=2, ncol=7) + 
+        custom_theme() +
+        geom_ribbon(aes(ymin = mean_BiSi - (max_range_BiSi / 2), 
+                        ymax = mean_BiSi + (max_range_BiSi / 2)),
+                    fill="orange") +
+        geom_line() + 
+        geom_point() +
+        labs(x = "Year (Common Era)",
+             y="BiSi")
+
+ggsave("3_Figures/FigX_BiSi_max_error.png",height=5, width=16, units="in")
+
+
+
+ggplot(data = meta, aes(x = date_mid_AD_combo, y =mean_C.H)) +
+  facet_wrap(~lake_name, nrow=2, ncol=7) + 
+        custom_theme() +
+        geom_ribbon(aes(ymin = mean_C.H - (mean_range_C.H / 2), 
+                        ymax = mean_C.H + (mean_range_C.H / 2)),
+                    fill="orange") +
+        geom_line() + 
+        geom_point() +
+        labs(x = "Year (Common Era)",
+             y="C-H")
+
+ggsave("3_Figures/FigX_C.H_mean_error.png",height=5, width=16, units="in")
+
+ggplot(data = meta, aes(x = date_mid_AD_combo, y =mean_C.H)) +
+  facet_wrap(~lake_name, nrow=2, ncol=7) + 
+        custom_theme() +
+        geom_ribbon(aes(ymin = mean_C.H - (max_range_C.H / 2), 
+                        ymax = mean_C.H + (max_range_C.H / 2)),
+                    fill="orange") +
+        geom_line() + 
+        geom_point() +
+        labs(x = "Year (Common Era)",
+             y="C-H")
+
+ggsave("3_Figures/FigX_CH_max_error.png",height=5, width=16, units="in")
+
+```
+- normalize for dry mass
+- normalize for clastics (1-organics)
+- see if it relates to the percent of diatoms and crysophytes
