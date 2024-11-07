@@ -9,12 +9,15 @@ editor_options:
 
 # Load packages, custom theme, color, and data
 ```{r}
-require(tidyverse)
-require(ggh4x)
-require(lubridate)
+
+require(ggh4x) # facet_wrap2
+require(lubridate) # julian date in modelling 210Pb
 require(phyloseq)
-library(nlme)
 require(patchwork) # if end up patching figures
+require(Biostrings) # for blasting Zooplankton
+require(strucchange) # breakpoint analysis 
+library(nlme) # linear mixed effects models
+require(tidyverse)
 ```
 
 
@@ -41,6 +44,22 @@ lake_colors <- c("Canyon" = "#b9ceac", "Eyrie" = "darkolivegreen3", "Lightning" 
                  "Bullfrog"= "#BFEFFF", "Middle Gaylor"= "#008080", "Soldier"="#0e4d92", "Skelton"="#63B8FF", 
                  "Crescent"= "#EE6363", "Louise"="#FFA07A","Monogram"="#EE30A7")
 
+lake_colors_2 <- c(
+        "Canyon" = "#b9ceac",
+        "Bullfrog" = "#BFEFFF",
+        "Eyrie" = "darkolivegreen3",
+        "Middle Gaylor" = "#008080",
+        "Lightning" = "darkolivegreen",
+        "Soldier" = "#0e4d92",
+        "Black Rock" = "#FFBBFF",
+        "Skelton" = "#63B8FF",
+        "Footprint" = "#CD96CD",
+        "Crescent" = "#EE6363",
+        "Lost" = "#9696CD",
+        "Louise" = "#FFA07A",
+        "Scott" = "#5D478B",
+        "Monogram" = "#EE30A7"
+)
 
 
 source("1_LoadData/1_CreatePhyloseq_ZOTUexact_TAX80.R")
@@ -915,8 +934,6 @@ ggsave("3_Figures/FigX_D15N_anomaly_NMDS_V9_protist_region.png",height=7, width=
 
 ### ix. breakpoint analysis for d15N
 ```{r}
-library(strucchange)
-
 meta <- metadata %>% filter(isotope_run=="CN" &is.na(d15N_diff_from_start)==F) %>% arrange(lake_name, desc(bottom_cm))
 
 breakpoint_summary<-data.frame(lake_name=NULL,breakpoint_1=NULL, breakpoint_2=NULL)
@@ -2331,19 +2348,163 @@ ggsave("3_Figures/FigX_D15N_anomaly_NMDS_V7_other_multipanel.png",height=7, widt
 
 
 # NEW BELOW
+
+
+# temperature histories
+```{r}
+
+# set colors for lakes
+lake_colors <- c(
+        "Canyon" = "#b9ceac",
+        "Bullfrog" = "#BFEFFF",
+        "Eyrie" = "darkolivegreen3",
+        "Middle Gaylor" = "#008080",
+        "Lightning" = "darkolivegreen",
+        "Soldier" = "#0e4d92",
+        "Black Rock" = "#FFBBFF",
+        "Skelton" = "#63B8FF",
+        "Footprint" = "#CD96CD",
+        "Crescent" = "#EE6363",
+        "Lost" = "#9696CD",
+        "Louise" = "#FFA07A",
+        "Scott" = "#5D478B",
+        "Monogram" = "#EE30A7"
+)
+
+# order lake names for plot
+metadata$lake_name <- factor(metadata$lake_name, levels = names(lake_colors))
+
+ggplot(data=metadata, aes(x=date_mid_AD_combo,y=mean_air_temp_degC_interval))+
+        facet_wrap2(
+    ~ lake_name, ncol = 2, strip.position = "top",
+    strip = strip_themed(
+      background_x = elem_list_rect(fill = lake_colors),
+      text_x = elem_list_text(
+        color = ifelse(names(lake_colors) %in% c("Lightning", "Scott", "Middle Gaylor", "Soldier"), "white", "black"))))+
+        geom_line() + custom_theme() + 
+        labs(x = "Year", y = "Average annual air temperature (deg C) over sediment interval")+
+        xlim(1895,2021)
+
+ggsave("3_Figures/FigX_temperature_histories_averaged_interval.png", height=10,width=7)
+
+# add in climate data from PRISM
+prism <- read.csv("2_DataAnalysis/PRISM/PRISM_ppt_tmean_stable_4km_1895_2021.csv", header = TRUE, skip = 10) %>%
+mutate(Name=case_when(Name=="Middle Gaylo"~"Middle Gaylor", 
+                      TRUE ~Name)) %>%
+  filter(complete.cases(.)) %>%
+  rename(lake_name = 1) %>%
+  mutate(lake_name = factor(lake_name)) %>%
+  rename(precip_ppt_mm=ppt..mm.,
+         mean_air_temp_degC=tmean..degrees.C., 
+         longitude_prism=Longitude,
+         latitude_prism=Latitude,
+         elevation_prism=Elevation..m.) 
+
+prism $lake_name <- factor(prism $lake_name, levels = names(lake_colors))
+
+
+ggplot(data=prism, aes(x=Date,y=mean_air_temp_degC))+
+        facet_wrap2(
+    ~ lake_name, ncol = 2, strip.position = "top",
+    strip = strip_themed(
+      background_x = elem_list_rect(fill = lake_colors),
+      text_x = elem_list_text(
+        color = ifelse(names(lake_colors) %in% c("Lightning", "Scott", "Middle Gaylor", "Soldier"), "white", "black"))))+
+        geom_line() + custom_theme() + 
+        labs(x = "Year", y = "Average annual air temperature (deg C)")+
+        xlim(1895,2021)
+
+ggsave("3_Figures/FigX_temperature_histories.png", height=10,width=7)
+
+
+```
+
+
+```{r}
+
+lake_colors <- c("Canyon" = "#b9ceac", "Eyrie" = "darkolivegreen3", "Lightning" = "darkolivegreen", 
+                 "Black Rock" = "#FFBBFF", "Footprint" = "#CD96CD", "Lost" = "#9696CD", "Scott" = "#5D478B", 
+                 "Bullfrog"= "#BFEFFF", "Middle Gaylor"= "#008080", "Soldier"="#0e4d92", "Skelton"="#63B8FF", 
+                 "Crescent"= "#EE6363", "Louise"="#FFA07A","Monogram"="#EE30A7")
+
+meta <- metadata %>% filter(is.na(mean_air_temp_degC_interval)==F) %>% arrange(lake_name, desc(bottom_cm))
+
+breakpoint_summary<-data.frame(lake_name=NULL,breakpoint_1=NULL, breakpoint_2=NULL)
+for(i in 1:14){
+sub<-meta[meta$lake_name==unique(meta$lake_name)[i],names(meta)%in%c("sample_id","mean_air_temp_degC_interval")]
+sub<-ts(sub$mean_air_temp_degC_interval, start=1,end=nrow(sub), frequency = 1)
+
+## estimate breakpoints
+bp.ri <- breakpoints(sub ~ 1, h = 3)
+#plot(bp.ri)
+sum<-summary(bp.ri)
+one<-sum$breakpoints[1,]
+#two<-sum$breakpoints[2,]
+
+## fit segmented model with two breaks from minimized BIC
+fac.ri <- breakfactor(bp.ri, breaks = 1, label = "seg")
+fm.ri <- lm(sub ~ 0 + fac.ri)
+#summary(fm.ri)
+
+## Visualization
+plot(sub, main=unique(meta$lake_name)[i])
+lines(as.vector(time(sub)), fitted(fm.ri), col = 4)
+
+breakpoint_summary<-rbind(breakpoint_summary, data.frame(lake_name=unique(meta$lake_name)[i],breakpoint_1=one[is.na(one)==F]))
+}
+
+
+print(breakpoint_summary)
+breakpoint_index<-breakpoint_summary
+names(breakpoint_index)[2]<-"breakpoint_index"
+
+
+meta<-left_join(meta, breakpoint_index, join_by(lake_name))
+
+meta <- meta %>%
+  group_by(lake_name) %>%
+  mutate(temperature_breakpoint_bottom_cm = bottom_cm[breakpoint_index],
+         temperature_breakpoint_date = date_mid_AD_combo[breakpoint_index]) %>%
+  ungroup()
+
+meta <- meta %>%
+  mutate(lake_name = factor(lake_name, levels = names(lake_colors)))  
+
+#breakpoints bottom centimeter
+ggplot(meta, aes(x=date_mid_AD_combo, y=mean_air_temp_degC_interval)) +
+        geom_point()+
+        geom_line()+
+  facet_wrap2(~ lake_name, ncol=7, strip.position = "top", strip=strip_themed(background_x = elem_list_rect(fill = lake_colors))) +
+        labs(y="Average annual air temperature (deg C) \n over sediment interval", x="Date (Common Era)") +
+        geom_vline(data=meta %>% select(lake_name,temperature_breakpoint_date) %>% unique(.) %>%  filter(complete.cases(.)), aes(xintercept=temperature_breakpoint_date), color="black",linewidth=0.75) +
+        custom_theme()
+ggsave("3_Figures/FigX_temperature_breakpoints_date.png",height=4, width=15, units="in")
+
+# write to CSV
+#lake_breakpoints<-meta %>% select(lake_name, temperature_breakpoint_bottom_cm,temperature_breakpoint_date) %>% unique(.) %>%  filter(complete.cases(.))
+
+write.csv(lake_breakpoints, "2_DataAnalysis/temperature_breakpoints.csv")
+```
+
+
+## V7
 ### a. level 1 - phototrophic plankton
 #### i. NMDS
 ```{r}
 # read in the functional assignment file remove ~4k taxa that assign to fungi
 tax_fun<-read.csv("2_DataAnalysis/V7_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
 tax_fun <- as.matrix(tax_fun) # convert to matrix
-tax_table(ps_V7_norm) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+ps_V7_norm_sub<-ps_V7_norm
+tax_table(ps_V7_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+rm(tax_fun)
+ps_V7_norm_sub<-subset_taxa(ps_V7_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs"))
 ```
 
 
 ```{r}
 # NMDS plot
-nmds <- subset_taxa(ps_V7_norm, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs")) %>% ordinate(., method = "NMDS", distance="bray")
+set.seed(613)
+nmds <- ps_V7_norm_sub %>% ordinate(., method = "NMDS", distance="bray")
 
 nmds_points <- as.data.frame(nmds$points)
 nmds_points$sample_id<-rownames(nmds_points)
@@ -2373,9 +2534,12 @@ ggplot() +
   theme(legend.position = "right",
         panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank()) +
-  guides(color = guide_legend(override.aes = list(size = 6)))  
+  guides(color = guide_legend(override.aes = list(size = 6)))  +
+          annotate("text", x = min(nmds_meta$MDS1), y = max(nmds_meta$MDS2),
+                   hjust=1,vjust=1,size = 5,
+           label = paste("Stress =", round(nmds$stress, 3))) 
 
-ggsave("3_Figures/FigX_NMDS_phytoplankton_V7_ESV.png", width = 7, height = 5, dpi = 400)
+ggsave("3_Figures/FigX_V7_phytoplankton_NMDS_ESV.png", width = 7, height = 5, dpi = 400)
 ```
 
 
@@ -2384,27 +2548,9 @@ ggsave("3_Figures/FigX_NMDS_phytoplankton_V7_ESV.png", width = 7, height = 5, dp
 
 taxa_colors <- c("#009E73","#E69F00", "#56B4E9")
 # set colors for lakes
-lake_colors <- c(
-        "Canyon" = "#b9ceac",
-        "Bullfrog" = "#BFEFFF",
-        "Eyrie" = "darkolivegreen3",
-        "Middle Gaylor" = "#008080",
-        "Lightning" = "darkolivegreen",
-        "Soldier" = "#0e4d92",
-        "Black Rock" = "#FFBBFF",
-        "Skelton" = "#63B8FF",
-        "Footprint" = "#CD96CD",
-        "Crescent" = "#EE6363",
-        "Lost" = "#9696CD",
-        "Louise" = "#FFA07A",
-        "Scott" = "#5D478B",
-        "Monogram" = "#EE30A7"
-)
 
-
-
-# select only phototrophs and mixotrophs, group by taxonomic rank and turn to relative abundance
-sub <- subset_taxa(ps_V7_norm, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs")) %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V7_norm_sub %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
 
 # subset dataset by taxa with the highest abundance in each group
 sub <- sub %>% filter(subdivision%in%c(
@@ -2419,6 +2565,9 @@ sub <- sub %>% mutate(subdivision= case_when(subdivision=="Chlorophyta_X" ~ "Chl
 
 # add in d15N breakpoints
 sub <- sub %>% left_join(read.csv("2_DataAnalysis/d15N_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+# add in temperature breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/temperature_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
 
 # separate high and low d15N by the breakpoints
 sub <- sub %>%  group_by(lake_name)%>% 
@@ -2459,19 +2608,31 @@ ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivision
     aes(xintercept = first_stocked_yr, linetype = "Year fish first stocked"), 
     color = "black", linewidth = 0.75
   ) +
+  geom_vline(
+    data = sub %>% filter(!is.na(temperature_breakpoint_date)), 
+    aes(xintercept = temperature_breakpoint_date, linetype = "Temperature breakpoint"), 
+    color = "black", linewidth = 0.75
+  )+
   scale_color_manual(values = taxa_colors) +
-  scale_linetype_manual(values = c("dotted", "solid")) 
+ scale_linetype_manual(
+    values = c("N isotope breakpoint" = "dotted", "Year fish first stocked" = "solid", "Temperature breakpoint" = "dashed"),
+    breaks = c("N isotope breakpoint", "Year fish first stocked", "Temperature breakpoint") # Specify order here
+  )+
+          guides(
+    linetype = guide_legend(
+      keyheight = 2))
+ 
 
-ggsave("3_Figures/FigX_relative_abundance_V7_top_phytoplankton.png",height=10, width=9, units="in")
+ggsave("3_Figures/FigX_V7_phytoplankton_top_relative_abundance.png",height=10, width=9, units="in")
 
 ```
 
 
 #### iii. linear mixed effects models
 ```{r}
-# run mixed effects models over prism time frame
+# run mixed effects models over prism time frame and switch the sign for nitrogen deposition
 lme_data <-sub %>% filter(is.na(mean_air_temp_degC_interval)==F & is.na(d15N_diff_from_start)==F) %>% select(Abundance,mean_air_temp_degC_interval,d15N_diff_from_start,fish_present_binary,lake_name,subdivision, mid_cm) %>%   
-        arrange(lake_name,subdivision,desc(mid_cm)) %>% group_by(lake_name) %>% mutate(time_seq=row_number()) %>% ungroup()
+        arrange(lake_name,subdivision,desc(mid_cm)) %>% group_by(lake_name) %>% mutate(time_seq=row_number()) %>% ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
 
 
 model_output<-as_tibble(NULL)
@@ -2483,8 +2644,8 @@ for(i in unique(lme_data$subdivision)){
                 data = lme_data %>% filter(subdivision == i))
 # extract model estimates and put into a table for each iteration
       model_summary <- summary(model)
-      model_table <- as_tibble(model_summary$tTable, rownames = "term")
-      model_table <- model_table %>% mutate(taxa = i) %>% rename(p.value='p-value')
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
       model_output <- bind_rows(model_output, model_table) 
       } ; rm(model); rm(i); rm(model_table)
 
@@ -2514,10 +2675,11 @@ ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.
     ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
-ggsave("3_Figures/FigX_lme_V7_top_phytoplankton.png",height=4, width=7, units="in")
+ggsave("3_Figures/FigX_V7_phytoplankton_top_LME.png",height=4, width=7, units="in")
 
 
-write.csv(as.data.frame(model_output), "2_DataAnalysis/LME_phytoplankton_model_output.csv")
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V7_LME_phytoplankton_model_output.csv")
+
 
 # try individually by lake
 
@@ -2554,59 +2716,23 @@ left off here, tried to do this by lake but when you loop through each lake then
 
 
 
-
-
-
-
-
-
-
-
-Time series test
-```{r}
-test<- sub %>% filter(lake_name=="Canyon" & subdivision=="Chlorophyta") %>% arrange(time_seq)
-y<-ts(test$Abundance,start=1, end=nrow(test),frequency = 1)
-
-tseries::adf.test(y, k=4)
-TSA::acf(y,type="correlation",drop.lag.0=T)  # ACF plot
-TSA::acf(y,type="partial")  # PACF plot
-eacf(y,ar.max=7, ma.max=7) # EACF plot
-
-fit<-forecast::auto.arima(y, seasonal=F, stationary=F, trace=T)
-pred<-fitted(fit)
-
-plot(y); lines(c(time(y)), pred,lty=2,col="purple")
-```
-
-
-
-try zooplankton with less abundant genuses
-plot relative abundances of the phototrophs to see who is driving change
-plot the non phototrophs (other)
-
-
-run functional assignment for V9
-
-For manuscript: 
-- need to mention could be feedbacks between community and d15N values
-
-
-
-
-
 ### b. level 2 - heterotrophic protists
 #### i. NMDS
 ```{r}
 # read in the functional assignment file remove ~4k taxa that assign to fungi
 tax_fun<-read.csv("2_DataAnalysis/V7_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
 tax_fun <- as.matrix(tax_fun) # convert to matrix
-tax_table(ps_V7_norm) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+ps_V7_norm_sub<-ps_V7_norm
+tax_table(ps_V7_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+rm(tax_fun)
+ps_V7_norm_sub<- subset_taxa(ps_V7_norm_sub, !trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs") &  !subdivision=="Metazoa")
 ```
 
 
 ```{r}
 # NMDS plot
-nmds <- subset_taxa(ps_V7_norm, !trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs") &  !subdivision=="Metazoa") %>% ordinate(., method = "NMDS", distance="bray")
+set.seed(613)
+nmds <- ps_V7_norm_sub %>% ordinate(., method = "NMDS", distance="bray")
 
 nmds_points <- as.data.frame(nmds$points)
 nmds_points$sample_id<-rownames(nmds_points)
@@ -2636,9 +2762,12 @@ ggplot() +
   theme(legend.position = "right",
         panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank()) +
-  guides(color = guide_legend(override.aes = list(size = 6)))  
+  guides(color = guide_legend(override.aes = list(size = 6)))  +
+          annotate("text", x = min(nmds_meta$MDS1), y = max(nmds_meta$MDS2),
+                   hjust=1,vjust=1,size = 5,
+           label = paste("Stress =", round(nmds$stress, 3))) 
 
-ggsave("3_Figures/FigX_NMDS_heterotrophic_protists_V7_ESV.png", width = 7, height = 5, dpi = 400)
+ggsave("3_Figures/FigX_V7_heterotrophic_protists_NMDS_ESV.png", width = 7, height = 5, dpi = 400)
 ```
 
 
@@ -2648,28 +2777,10 @@ ggsave("3_Figures/FigX_NMDS_heterotrophic_protists_V7_ESV.png", width = 7, heigh
 #taxa_colors <- c("#009E73","#E69F00", "#56B4E9")
 taxa_colors<-palette.colors(palette = "Okabe-Ito")
 
-# set colors for lakes
-lake_colors <- c(
-        "Canyon" = "#b9ceac",
-        "Bullfrog" = "#BFEFFF",
-        "Eyrie" = "darkolivegreen3",
-        "Middle Gaylor" = "#008080",
-        "Lightning" = "darkolivegreen",
-        "Soldier" = "#0e4d92",
-        "Black Rock" = "#FFBBFF",
-        "Skelton" = "#63B8FF",
-        "Footprint" = "#CD96CD",
-        "Crescent" = "#EE6363",
-        "Lost" = "#9696CD",
-        "Louise" = "#FFA07A",
-        "Scott" = "#5D478B",
-        "Monogram" = "#EE30A7"
-)
 
 
-
-# select only phototrophs and mixotrophs, group by taxonomic rank and turn to relative abundance
-sub <- subset_taxa(ps_V7_norm, !trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs") &  !subdivision=="Metazoa") %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V7_norm_sub %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
 
 # subset dataset by taxa with the highest abundance in each group
 sub <- sub %>% filter(subdivision%in%c(
@@ -2685,6 +2796,404 @@ sub <- sub %>% mutate(subdivision= case_when(subdivision=="Evosea_X" ~ "Evosea",
 
 # add in d15N breakpoints
 sub <- sub %>% left_join(read.csv("2_DataAnalysis/d15N_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+# add in temperature breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/temperature_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+
+# separate high and low d15N by the breakpoints
+sub <- sub %>%  group_by(lake_name)%>% 
+        mutate(d15N_category = case_when(bottom_cm <= d15N_breakpoint_bottom_cm ~"low",
+                                        bottom_cm > d15N_breakpoint_bottom_cm ~"high")) %>% 
+        ungroup()
+
+# order lake names for plot
+sub$lake_name <- factor(sub$lake_name, levels = names(lake_colors_2))
+
+# label line type
+sub <- sub %>%
+  mutate(line_type = case_when(
+    !is.na(d15N_breakpoint_date) ~ "N isotope breakpoint",
+    !is.na(first_stocked_yr) ~ "Year fish first stocked",
+    TRUE ~ NA_character_
+  ))
+
+
+
+ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivision)) +
+  facet_wrap2(
+    ~ lake_name, ncol = 2, strip.position = "top",
+    strip = strip_themed(
+      background_x = elem_list_rect(fill = lake_colors_2),
+      text_x = elem_list_text(
+        color = ifelse(names(lake_colors_2) %in% c("Lightning", "Scott", "Middle Gaylor", "Soldier"), "white", "black")))) +
+  labs(x = "Date (Common Era)", y = "Relative abundance (proportion)", color = "Taxonomic group", linetype = "") +
+  geom_line(aes(group = subdivision), linewidth = 1.1) +         
+  custom_theme() + 
+  geom_vline(
+    data = sub %>% filter(!is.na(d15N_breakpoint_date)), 
+    aes(xintercept = d15N_breakpoint_date, linetype = "N isotope breakpoint"), 
+    color = "black", linewidth = 0.75
+  ) +
+  geom_vline(
+    data = sub %>% filter(!is.na(first_stocked_yr)), 
+    aes(xintercept = first_stocked_yr, linetype = "Year fish first stocked"), 
+    color = "black", linewidth = 0.75
+  ) +
+        geom_vline(
+    data = sub %>% filter(!is.na(temperature_breakpoint_date)), 
+    aes(xintercept = temperature_breakpoint_date, linetype = "Temperature breakpoint"), 
+    color = "black", linewidth = 0.75
+  )+
+  scale_color_manual(values = taxa_colors) +
+ scale_linetype_manual(
+    values = c("N isotope breakpoint" = "dotted", "Year fish first stocked" = "solid", "Temperature breakpoint" = "dashed"),
+    breaks = c("N isotope breakpoint", "Year fish first stocked", "Temperature breakpoint") # Specify order here
+  )+
+          guides(
+    linetype = guide_legend(
+      keyheight = 2))
+ 
+
+ggsave("3_Figures/FigX_V7_heterotrophic_protists_top_relative_abundance.png",height=10, width=9, units="in")
+
+```
+
+
+#### iii. linear mixed effects models
+```{r}
+# run mixed effects models over prism time frame and switch the sign for nitrogen deposition
+lme_data <-sub %>% filter(is.na(mean_air_temp_degC_interval)==F & is.na(d15N_diff_from_start)==F) %>% select(Abundance,mean_air_temp_degC_interval,d15N_diff_from_start,fish_present_binary,lake_name,subdivision, mid_cm) %>%   
+        arrange(lake_name,subdivision,desc(mid_cm)) %>% group_by(lake_name) %>% mutate(time_seq=row_number()) %>% ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
+
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_interval + d15N_diff_from_start + fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+
+model_output<-model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        mutate(term = case_when(term=="(Intercept)"~"Intercept",
+                                term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+                                term=="d15N_diff_from_start"~"d15N",
+                                term=="fish_present_binary"~"Fish presence"),
+        term = factor(term, levels = c("Intercept","Mean annual air\ntemperature (deg C)","d15N", "Fish presence"))) %>% filter(!term=="Intercept")
+
+
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+  geom_point(size = 4, shape = 21, stroke = 1.5) + 
+  custom_theme()+         
+  scale_fill_manual(values = taxa_colors) + 
+  scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+  labs(x = "Estimate", 
+       y = "",
+       fill = "Taxonomic group",
+       color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+  scale_y_discrete(labels = function(term) {
+    ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+ggsave("3_Figures/FigX_V7_heterotrophic_protists_top_LME.png",height=4, width=7, units="in")
+
+
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V7_LME_heterotrophic_protists_model_output.csv")
+```
+
+
+
+### c. level 3 - zooplankton
+#### NCBI BLAST
+
+Using ps_V7_norm_sub so that I don't have to rerun (not changing ps_V7_norm from original). I did this for the ones above as well.
+```{r}
+# read in taxonomy assigned in Ch. 2
+tax_blast<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/ZooplanktonSedDNA/5_DataAnalysis/BLAST_zooplankton/Max_Bra/5_BLAST_V7_original_single_multiple.csv", row.names=1,na.strings="") %>% column_to_rownames(., var="qseqid") %>% 
+   mutate(Genus_plus = replace_na(Genus_plus, "Unassigned")) %>% select(Kingdom,Genus_plus) %>% filter(Genus_plus %in% c("Hesperodiaptomus", "Holopedium", "Ceriodaphnia", "Daphnia", "Chydoridae", "Leptodiaptomus", "Bosmina", "Cyclopidae")) # don't include "Harpacticoida" because generally sediment dwelling copepods and we have low abundances anyway!
+tax_blast <- as.matrix(tax_blast) # convert to matrix
+ps_V7_norm_sub<-ps_V7_norm
+tax_table(ps_V7_norm_sub) <- tax_table(tax_blast) # replace taxonomy table in the phyloseq object
+rm(tax_blast)
+
+# congomerate right away to genus_plus
+ps_V7_norm_sub <- ps_V7_norm_sub %>% tax_glom(., taxrank = "Genus_plus")
+```
+
+#### i. NMDS
+```{r}
+# NMDS plot
+set.seed(613)
+nmds <- ps_V7_norm_sub %>% ordinate(., method = "NMDS", distance="bray")
+
+nmds_points <- as.data.frame(nmds$points)
+nmds_points$sample_id<-rownames(nmds_points)
+nmds_meta<-merge(nmds_points,metadata,by="sample_id")
+rm(nmds_points)
+
+nmds_meta <- nmds_meta %>%
+        mutate(lake_color = lake_colors[lake_name])
+
+# make the legend order match the lake_colors list
+nmds_meta$lake_name <- factor(nmds_meta$lake_name, levels = names(lake_colors))
+
+
+# add depth
+nmds_meta$scaled_depth<-scale(nmds_meta$bottom_cm)
+nmds_meta$scaled_depth<-(nmds_meta$scaled_depth+2.519536)
+
+ggplot() +
+  geom_point(data = nmds_meta, 
+             aes(x = MDS1, y = MDS2, size = scaled_depth, color = lake_name), 
+             shape = 16) +  
+  scale_color_manual(values = lake_colors, name = "Lake") +  
+  scale_size_continuous(name = "Scaled Depth", range = c(1, 5), guide = "none") + 
+  labs(x = "NMDS1", y = "NMDS2") +  
+  custom_theme() + 
+        scale_x_reverse()+
+  theme(legend.position = "right",
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) +
+  guides(color = guide_legend(override.aes = list(size = 6)))  +
+          annotate("text", x = max(nmds_meta$MDS1), y = max(nmds_meta$MDS2),
+                   hjust=0,vjust=1,size = 5,
+           label = paste("Stress =", round(nmds$stress, 3))) 
+
+ggsave("3_Figures/FigX_V7_zooplankton_NMDS_ESV.png", width = 7, height = 5, dpi = 400)
+```
+
+
+#### ii. relative abundance
+```{r}
+
+
+taxa_colors<-palette.colors(palette = "Okabe-Ito")
+taxa_colors<-c("#000000", "#E69F00" ,"#56B4E9" ,"#009E73" ,"#D55E00" ,"#F0E442" ,"#0072B2")
+
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V7_norm_sub %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(Genus_plus%in%c(
+        sub %>% filter(Abundance > 0.2) %>% select(Genus_plus) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+unique(sub$Genus_plus)
+
+
+# add in d15N breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/d15N_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+# add in temperature breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/temperature_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+
+# separate high and low d15N by the breakpoints
+sub <- sub %>%  group_by(lake_name)%>% 
+        mutate(d15N_category = case_when(bottom_cm <= d15N_breakpoint_bottom_cm ~"low",
+                                        bottom_cm > d15N_breakpoint_bottom_cm ~"high")) %>% 
+        ungroup()
+
+# order lake names for plot
+sub$lake_name <- factor(sub$lake_name, levels = names(lake_colors_2))
+
+# label line type
+sub <- sub %>%
+  mutate(line_type = case_when(
+    !is.na(d15N_breakpoint_date) ~ "N isotope breakpoint",
+    !is.na(first_stocked_yr) ~ "Year fish first stocked",
+    TRUE ~ NA_character_
+  ))
+
+
+
+ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = Genus_plus)) +
+  facet_wrap2(
+    ~ lake_name, ncol = 2, strip.position = "top",
+    strip = strip_themed(
+      background_x = elem_list_rect(fill = lake_colors_2),
+      text_x = elem_list_text(
+        color = ifelse(names(lake_colors_2) %in% c("Lightning", "Scott", "Middle Gaylor", "Soldier"), "white", "black")))) +
+  labs(x = "Date (Common Era)", y = "Relative abundance (proportion)", color = "Taxonomic group", linetype = "") +
+  geom_line(aes(group = Genus_plus), linewidth = 1.1) +         
+  custom_theme() + 
+  geom_vline(
+    data = sub %>% filter(!is.na(d15N_breakpoint_date)), 
+    aes(xintercept = d15N_breakpoint_date, linetype = "N isotope breakpoint"), 
+    color = "black", linewidth = 0.75
+  ) +
+  geom_vline(
+    data = sub %>% filter(!is.na(first_stocked_yr)), 
+    aes(xintercept = first_stocked_yr, linetype = "Year fish first stocked"), 
+    color = "black", linewidth = 0.75
+  ) +
+        geom_vline(
+    data = sub %>% filter(!is.na(temperature_breakpoint_date)), 
+    aes(xintercept = temperature_breakpoint_date, linetype = "Temperature breakpoint"), 
+    color = "black", linewidth = 0.75
+  )+
+  scale_color_manual(values = taxa_colors) +
+ scale_linetype_manual(
+    values = c("N isotope breakpoint" = "dotted", "Year fish first stocked" = "solid", "Temperature breakpoint" = "dashed"),
+    breaks = c("N isotope breakpoint", "Year fish first stocked", "Temperature breakpoint") # Specify order here
+  )+
+          guides(
+    linetype = guide_legend(
+      keyheight = 2))
+ 
+
+ggsave("3_Figures/FigX_V7_zooplankton_top_relative_abundance.png",height=10, width=9, units="in")
+
+```
+
+
+#### iii. linear mixed effects models
+```{r}
+# run mixed effects models over prism time frame and switch the sign for nitrogen deposition
+lme_data <-sub %>% filter(is.na(mean_air_temp_degC_interval)==F & is.na(d15N_diff_from_start)==F) %>% select(Abundance,mean_air_temp_degC_interval,d15N_diff_from_start,fish_present_binary,lake_name,Genus_plus, mid_cm) %>%   
+        arrange(lake_name,Genus_plus,desc(mid_cm)) %>% group_by(lake_name) %>% mutate(time_seq=row_number()) %>% ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
+
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$Genus_plus)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_interval + d15N_diff_from_start + fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(Genus_plus == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term")%>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+
+model_output<-model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        mutate(term = case_when(term=="(Intercept)"~"Intercept",
+                                term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+                                term=="d15N_diff_from_start"~"d15N",
+                                term=="fish_present_binary"~"Fish presence"),
+        term = factor(term, levels = c("Intercept","Mean annual air\ntemperature (deg C)","d15N", "Fish presence"))) %>% filter(!term=="Intercept")
+
+
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+  geom_point(size = 4, shape = 21, stroke = 1.5) + 
+  custom_theme()+         
+  scale_fill_manual(values = taxa_colors) + 
+  scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+  labs(x = "Estimate", 
+       y = "",
+       fill = "Taxonomic group",
+       color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+  scale_y_discrete(labels = function(term) {
+    ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+ggsave("3_Figures/FigX_V7_zooplankton_LME.png",height=4, width=7, units="in")
+
+
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V7_LME_zooplankton_model_output.csv")
+```
+
+
+
+
+## V9
+### a. level 1 - phototrophic plankton
+
+```{r}
+# read in the functional assignment file remove ~4k taxa that assign to fungi
+tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+tax_fun <- as.matrix(tax_fun) # convert to matrix
+ps_V9_norm_sub<-ps_V9_norm
+tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+rm(tax_fun)
+ps_V9_norm_sub<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs"))
+```
+
+#### i. NMDS
+```{r}
+# NMDS plot
+set.seed(613)
+nmds <- ps_V9_norm_sub %>% ordinate(., method = "NMDS", distance="bray")
+
+nmds_points <- as.data.frame(nmds$points)
+nmds_points$sample_id<-rownames(nmds_points)
+nmds_meta<-merge(nmds_points,metadata,by="sample_id")
+rm(nmds_points)
+
+nmds_meta <- nmds_meta %>%
+        mutate(lake_color = lake_colors[lake_name])
+
+# make the legend order match the lake_colors list
+nmds_meta$lake_name <- factor(nmds_meta$lake_name, levels = names(lake_colors))
+
+
+# add depth
+nmds_meta$scaled_depth<-scale(nmds_meta$bottom_cm)
+nmds_meta$scaled_depth<-(nmds_meta$scaled_depth+2.519536)
+
+ggplot() +
+  geom_point(data = nmds_meta, 
+             aes(x = MDS2, y = MDS1, size = scaled_depth, color = lake_name), 
+             shape = 16) +  
+  scale_color_manual(values = lake_colors, name = "Lake") +  
+  scale_size_continuous(name = "Scaled Depth", range = c(1, 5), guide = "none") + 
+  labs(x = "NMDS2", y = "NMDS1") +  
+  custom_theme() + 
+        scale_x_reverse()+
+  theme(legend.position = "right",
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) +
+  guides(color = guide_legend(override.aes = list(size = 6)))  +
+          annotate("text", x = min(nmds_meta$MDS2), y = max(nmds_meta$MDS1),
+                   hjust=1,vjust=1,size = 5,
+           label = paste("Stress =", round(nmds$stress, 3))) 
+
+ggsave("3_Figures/FigX_V9_phytoplankton_NMDS_ESV.png", width = 7, height = 5, dpi = 400)
+```
+
+
+#### ii. relative abundance
+```{r}
+
+taxa_colors <- c("#009E73","#E69F00", "#56B4E9", "#D55E00")
+# set colors for lakes
+
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_sub %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(subdivision%in%c(
+        sub %>% filter(Abundance > 0.35) %>% select(subdivision) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+# rename the groups so there isn't an _X
+sub <- sub %>% mutate(subdivision= case_when(subdivision=="Chlorophyta_X" ~ "Chlorophyta",
+                                             subdivision=="Streptophyta_X" ~ "Streptophyta",
+                                             TRUE~subdivision
+                                             ))
+
+# add in d15N breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/d15N_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+# add in temperature breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/temperature_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
 
 # separate high and low d15N by the breakpoints
 sub <- sub %>%  group_by(lake_name)%>% 
@@ -2725,19 +3234,31 @@ ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivision
     aes(xintercept = first_stocked_yr, linetype = "Year fish first stocked"), 
     color = "black", linewidth = 0.75
   ) +
+  geom_vline(
+    data = sub %>% filter(!is.na(temperature_breakpoint_date)), 
+    aes(xintercept = temperature_breakpoint_date, linetype = "Temperature breakpoint"), 
+    color = "black", linewidth = 0.75
+  )+
   scale_color_manual(values = taxa_colors) +
-  scale_linetype_manual(values = c("dotted", "solid")) 
+ scale_linetype_manual(
+    values = c("N isotope breakpoint" = "dotted", "Year fish first stocked" = "solid", "Temperature breakpoint" = "dashed"),
+    breaks = c("N isotope breakpoint", "Year fish first stocked", "Temperature breakpoint") # Specify order here
+  )+
+          guides(
+    linetype = guide_legend(
+      keyheight = 2))
+ 
 
-ggsave("3_Figures/FigX_relative_abundance_V7_top_heterotrophic_protists.png",height=10, width=9, units="in")
+ggsave("3_Figures/FigX_V9_phytoplankton_top_relative_abundance.png",height=10, width=9, units="in")
 
 ```
 
 
 #### iii. linear mixed effects models
 ```{r}
-# run mixed effects models over prism time frame
+# run mixed effects models over prism time frame and switch the sign for nitrogen deposition
 lme_data <-sub %>% filter(is.na(mean_air_temp_degC_interval)==F & is.na(d15N_diff_from_start)==F) %>% select(Abundance,mean_air_temp_degC_interval,d15N_diff_from_start,fish_present_binary,lake_name,subdivision, mid_cm) %>%   
-        arrange(lake_name,subdivision,desc(mid_cm)) %>% group_by(lake_name) %>% mutate(time_seq=row_number()) %>% ungroup()
+        arrange(lake_name,subdivision,desc(mid_cm)) %>% group_by(lake_name) %>% mutate(time_seq=row_number()) %>% ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
 
 
 model_output<-as_tibble(NULL)
@@ -2749,8 +3270,8 @@ for(i in unique(lme_data$subdivision)){
                 data = lme_data %>% filter(subdivision == i))
 # extract model estimates and put into a table for each iteration
       model_summary <- summary(model)
-      model_table <- as_tibble(model_summary$tTable, rownames = "term")
-      model_table <- model_table %>% mutate(taxa = i) %>% rename(p.value='p-value')
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
       model_output <- bind_rows(model_output, model_table) 
       } ; rm(model); rm(i); rm(model_table)
 
@@ -2780,25 +3301,484 @@ ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.
     ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
-ggsave("3_Figures/FigX_lme_V7_top_heterotrophic_protists.png",height=4, width=7, units="in")
+ggsave("3_Figures/FigX_V9_phytoplankton_top_LME.png",height=4, width=7, units="in")
 
 
-write.csv(as.data.frame(model_output), "2_DataAnalysis/LME_phytoplankton_model_output.csv")
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_phytoplankton_model_output.csv")
+
+
+# try individually by lake
+
+# 
+# model_output<-as_tibble(NULL)
+# for(l in unique(lme_data$lake_name)){
+# for(i in unique(lme_data$subdivision)){
+#         model <- lm(
+#                 Abundance ~ mean_air_temp_degC_interval + d15N_diff_from_start + fish_present_binary,
+#                 data =lme_data %>% filter(subdivision == i & lake_name == l))
+# # extract model estimates and put into a table for each iteration
+#             model_summary <- summary(model)
+#             model_table <- as_tibble(coef(model_summary), rownames = "term")
+#             model_table <- model_table %>% mutate(taxa = i, lake_name = l) %>% rename(p.value = 'Pr(>|t|)')
+#             model_output <- bind_rows(model_output, model_table)
+#       }} ; rm(model); rm(i); rm(l); rm(model_table)
+# 
+# 
+#             
+# model_output<-model_output %>%
+#         mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+#                                  p.value > 0.05 ~ "No")) %>% 
+#         mutate(term = case_when(term=="(Intercept)"~"Intercept",
+#                                 term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+#                                 term=="d15N_combined"~"d15N",
+#                                 term=="fish_present_sample"~"Fish presence"),
+#         term = factor(term, levels = c("Intercept","Mean annual air\ntemperature (deg C)","d15N", "Fish presence"))) %>% filter(!term=="Intercept")
+
+
+```
+left off here, tried to do this by lake but when you loop through each lake then it isn't a mixed effect model anymore, tried just linear models but that takes away the ability to do autocorrelation. The output of this does not show a long of significant trends with any of the data which is suprising since it shows up in the lmes. Tried gls but got errors about "Error in glsEstimate(object, control = control) : computed "gls" fit is singular, rank 4" when I tried to keep autocorrelation. 
+
+
+
+
+
+### b. level 2 - heterotrophic protists
+#### i. NMDS
+```{r}
+# read in the functional assignment file remove ~4k taxa that assign to fungi
+tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+tax_fun <- as.matrix(tax_fun) # convert to matrix
+ps_V9_norm_sub<-ps_V9_norm
+tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+rm(tax_fun)
+ps_V9_norm_sub<- subset_taxa(ps_V9_norm_sub, !trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs") &  !subdivision=="Metazoa")
 ```
 
 
-# temperature histories
 ```{r}
-ggplot(data=metadata, aes(x=date_mid_AD_combo,y=mean_air_temp_degC_interval))+
-        facet_wrap2(
+# NMDS plot
+set.seed(613)
+nmds <- ps_V9_norm_sub %>% ordinate(., method = "NMDS", distance="bray")
+
+nmds_points <- as.data.frame(nmds$points)
+nmds_points$sample_id<-rownames(nmds_points)
+nmds_meta<-merge(nmds_points,metadata,by="sample_id")
+rm(nmds_points)
+
+nmds_meta <- nmds_meta %>%
+        mutate(lake_color = lake_colors[lake_name])
+
+# make the legend order match the lake_colors list
+nmds_meta$lake_name <- factor(nmds_meta$lake_name, levels = names(lake_colors))
+
+
+# add depth
+nmds_meta$scaled_depth<-scale(nmds_meta$bottom_cm)
+nmds_meta$scaled_depth<-(nmds_meta$scaled_depth+2.519536)
+
+ggplot() +
+  geom_point(data = nmds_meta, 
+             aes(x = MDS2, y = MDS1, size = scaled_depth, color = lake_name), 
+             shape = 16) +  
+  scale_color_manual(values = lake_colors, name = "Lake") +  
+  scale_size_continuous(name = "Scaled Depth", range = c(1, 5), guide = "none") + 
+  labs(x = "NMDS2", y = "NMDS1") +  
+  custom_theme() + 
+        scale_x_reverse()+
+  theme(legend.position = "right",
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) +
+  guides(color = guide_legend(override.aes = list(size = 6)))  +
+          annotate("text", x = min(nmds_meta$MDS2), y = max(nmds_meta$MDS1),
+                   hjust=1,vjust=1,size = 5,
+           label = paste("Stress =", round(nmds$stress, 3))) 
+
+ggsave("3_Figures/FigX_V9_heterotrophic_protists_NMDS_ESV.png", width = 7, height = 5, dpi = 400)
+```
+
+
+#### ii. relative abundance
+```{r}
+
+#taxa_colors <- c("#009E73","#E69F00", "#56B4E9")
+taxa_colors<-palette.colors(palette = "Okabe-Ito")
+
+
+
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_sub %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(subdivision%in%c(
+        sub %>% filter(Abundance > 0.6) %>% select(subdivision) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+unique(sub$subdivision)
+
+# rename the groups so there isn't an _X
+sub <- sub %>% mutate(subdivision= case_when(subdivision=="Evosea_X" ~ "Evosea",
+                                             TRUE~subdivision
+                                             ))
+
+# add in d15N breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/d15N_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+# add in temperature breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/temperature_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+
+# separate high and low d15N by the breakpoints
+sub <- sub %>%  group_by(lake_name)%>% 
+        mutate(d15N_category = case_when(bottom_cm <= d15N_breakpoint_bottom_cm ~"low",
+                                        bottom_cm > d15N_breakpoint_bottom_cm ~"high")) %>% 
+        ungroup()
+
+# order lake names for plot
+sub$lake_name <- factor(sub$lake_name, levels = names(lake_colors_2))
+
+# label line type
+sub <- sub %>%
+  mutate(line_type = case_when(
+    !is.na(d15N_breakpoint_date) ~ "N isotope breakpoint",
+    !is.na(first_stocked_yr) ~ "Year fish first stocked",
+    TRUE ~ NA_character_
+  ))
+
+
+
+ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivision)) +
+  facet_wrap2(
     ~ lake_name, ncol = 2, strip.position = "top",
     strip = strip_themed(
-      background_x = elem_list_rect(fill = lake_colors),
+      background_x = elem_list_rect(fill = lake_colors_2),
       text_x = elem_list_text(
-        color = ifelse(names(lake_colors) %in% c("Lightning", "Scott", "Middle Gaylor", "Soldier"), "white", "black"))))+
-        geom_line() + custom_theme() + 
-        xlim(1985,2021)
+        color = ifelse(names(lake_colors_2) %in% c("Lightning", "Scott", "Middle Gaylor", "Soldier"), "white", "black")))) +
+  labs(x = "Date (Common Era)", y = "Relative abundance (proportion)", color = "Taxonomic group", linetype = "") +
+  geom_line(aes(group = subdivision), linewidth = 1.1) +         
+  custom_theme() + 
+  geom_vline(
+    data = sub %>% filter(!is.na(d15N_breakpoint_date)), 
+    aes(xintercept = d15N_breakpoint_date, linetype = "N isotope breakpoint"), 
+    color = "black", linewidth = 0.75
+  ) +
+  geom_vline(
+    data = sub %>% filter(!is.na(first_stocked_yr)), 
+    aes(xintercept = first_stocked_yr, linetype = "Year fish first stocked"), 
+    color = "black", linewidth = 0.75
+  ) +
+        geom_vline(
+    data = sub %>% filter(!is.na(temperature_breakpoint_date)), 
+    aes(xintercept = temperature_breakpoint_date, linetype = "Temperature breakpoint"), 
+    color = "black", linewidth = 0.75
+  )+
+  scale_color_manual(values = taxa_colors) +
+ scale_linetype_manual(
+    values = c("N isotope breakpoint" = "dotted", "Year fish first stocked" = "solid", "Temperature breakpoint" = "dashed"),
+    breaks = c("N isotope breakpoint", "Year fish first stocked", "Temperature breakpoint") # Specify order here
+  )+
+          guides(
+    linetype = guide_legend(
+      keyheight = 2))
+ 
 
+ggsave("3_Figures/FigX_V9_heterotrophic_protists_top_relative_abundance.png",height=10, width=9, units="in")
 
 ```
 
+
+#### iii. linear mixed effects models
+```{r}
+# run mixed effects models over prism time frame and switch the sign for nitrogen deposition
+lme_data <-sub %>% filter(is.na(mean_air_temp_degC_interval)==F & is.na(d15N_diff_from_start)==F) %>% select(Abundance,mean_air_temp_degC_interval,d15N_diff_from_start,fish_present_binary,lake_name,subdivision, mid_cm) %>%   
+        arrange(lake_name,subdivision,desc(mid_cm)) %>% group_by(lake_name) %>% mutate(time_seq=row_number()) %>% ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
+
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_interval + d15N_diff_from_start + fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+
+model_output<-model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        mutate(term = case_when(term=="(Intercept)"~"Intercept",
+                                term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+                                term=="d15N_diff_from_start"~"d15N",
+                                term=="fish_present_binary"~"Fish presence"),
+        term = factor(term, levels = c("Intercept","Mean annual air\ntemperature (deg C)","d15N", "Fish presence"))) %>% filter(!term=="Intercept")
+
+
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+  geom_point(size = 4, shape = 21, stroke = 1.5) + 
+  custom_theme()+         
+  scale_fill_manual(values = taxa_colors) + 
+  scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+  labs(x = "Estimate", 
+       y = "",
+       fill = "Taxonomic group",
+       color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+  scale_y_discrete(labels = function(term) {
+    ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+ggsave("3_Figures/FigX_V9_heterotrophic_protists_top_LME.png",height=4, width=7, units="in")
+
+
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_heterotrophic_protists_model_output.csv")
+```
+
+
+
+### c. level 3 - zooplankton
+#### NCBI BLAST
+
+Using ps_V9_norm_sub so that I don't have to rerun (not changing ps_V9_norm from original). I did this for the ones above as well.
+```{r}
+# read in taxonomy assigned in Ch. 2
+tax_blast<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/ZooplanktonSedDNA/5_DataAnalysis/BLAST_zooplankton/Max_Bra/5_BLAST_V9_original_single_multiple.csv", row.names=1,na.strings="") %>% column_to_rownames(., var="qseqid") %>% 
+   mutate(Genus_plus = replace_na(Genus_plus, "Unassigned")) %>% select(Kingdom,Genus_plus) %>% filter(Genus_plus %in% c("Hesperodiaptomus", "Holopedium", "Ceriodaphnia", "Daphnia", "Chydoridae", "Leptodiaptomus", "Bosmina", "Cyclopidae")) # don't include "Harpacticoida" because generally sediment dwelling copepods and we have low abundances anyway!
+tax_blast <- as.matrix(tax_blast) # convert to matrix
+ps_V9_norm_sub<-ps_V9_norm
+tax_table(ps_V9_norm_sub) <- tax_table(tax_blast) # replace taxonomy table in the phyloseq object
+rm(tax_blast)
+
+# congomerate right away to genus_plus
+ps_V9_norm_sub <- ps_V9_norm_sub %>% tax_glom(., taxrank = "Genus_plus")
+```
+
+#### i. NMDS
+```{r}
+# NMDS plot
+set.seed(613)
+nmds <- ps_V9_norm_sub %>% ordinate(., method = "NMDS", distance="bray")
+
+nmds_points <- as.data.frame(nmds$points)
+nmds_points$sample_id<-rownames(nmds_points)
+nmds_meta<-merge(nmds_points,metadata,by="sample_id")
+rm(nmds_points)
+
+nmds_meta <- nmds_meta %>%
+        mutate(lake_color = lake_colors[lake_name])
+
+# make the legend order match the lake_colors list
+nmds_meta$lake_name <- factor(nmds_meta$lake_name, levels = names(lake_colors))
+
+
+# add depth
+nmds_meta$scaled_depth<-scale(nmds_meta$bottom_cm)
+nmds_meta$scaled_depth<-(nmds_meta$scaled_depth+2.519536)
+
+ggplot() +
+  geom_point(data = nmds_meta, 
+             aes(x = MDS1, y = MDS2, size = scaled_depth, color = lake_name), 
+             shape = 16) +  
+  scale_color_manual(values = lake_colors, name = "Lake") +  
+  scale_size_continuous(name = "Scaled Depth", range = c(1, 5), guide = "none") + 
+  labs(x = "NMDS1", y = "NMDS2") +  
+  custom_theme() + 
+        scale_x_reverse()+
+  theme(legend.position = "right",
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank()) +
+  guides(color = guide_legend(override.aes = list(size = 6)))  +
+          annotate("text", x = max(nmds_meta$MDS1), y = max(nmds_meta$MDS2),
+                   hjust=0,vjust=1,size = 5,
+           label = paste("Stress =", round(nmds$stress, 3))) 
+
+ggsave("3_Figures/FigX_V9_zooplankton_NMDS_ESV.png", width = 7, height = 5, dpi = 400)
+```
+
+
+#### ii. relative abundance
+```{r}
+taxa_colors<-palette.colors(palette = "Okabe-Ito")
+taxa_colors<-c("#000000", "#E69F00" ,"#56B4E9" ,"#009E73" ,"#D55E00" ,"#F0E442" ,"#0072B2","gray")
+
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_sub %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(Genus_plus%in%c(
+        sub %>% filter(Abundance > 0.4) %>% select(Genus_plus) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+unique(sub$Genus_plus)
+
+
+# add in d15N breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/d15N_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+# add in temperature breakpoints
+sub <- sub %>% left_join(read.csv("2_DataAnalysis/temperature_breakpoints.csv", header=T,row.names=1), join_by(lake_name))
+
+
+# separate high and low d15N by the breakpoints
+sub <- sub %>%  group_by(lake_name)%>% 
+        mutate(d15N_category = case_when(bottom_cm <= d15N_breakpoint_bottom_cm ~"low",
+                                        bottom_cm > d15N_breakpoint_bottom_cm ~"high")) %>% 
+        ungroup()
+
+# order lake names for plot
+sub$lake_name <- factor(sub$lake_name, levels = names(lake_colors_2))
+
+# label line type
+sub <- sub %>%
+  mutate(line_type = case_when(
+    !is.na(d15N_breakpoint_date) ~ "N isotope breakpoint",
+    !is.na(first_stocked_yr) ~ "Year fish first stocked",
+    TRUE ~ NA_character_
+  ))
+
+
+
+ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = Genus_plus)) +
+  facet_wrap2(
+    ~ lake_name, ncol = 2, strip.position = "top",
+    strip = strip_themed(
+      background_x = elem_list_rect(fill = lake_colors_2),
+      text_x = elem_list_text(
+        color = ifelse(names(lake_colors_2) %in% c("Lightning", "Scott", "Middle Gaylor", "Soldier"), "white", "black")))) +
+  labs(x = "Date (Common Era)", y = "Relative abundance (proportion)", color = "Taxonomic group", linetype = "") +
+  geom_line(aes(group = Genus_plus), linewidth = 1.1) +         
+  custom_theme() + 
+  geom_vline(
+    data = sub %>% filter(!is.na(d15N_breakpoint_date)), 
+    aes(xintercept = d15N_breakpoint_date, linetype = "N isotope breakpoint"), 
+    color = "black", linewidth = 0.75
+  ) +
+  geom_vline(
+    data = sub %>% filter(!is.na(first_stocked_yr)), 
+    aes(xintercept = first_stocked_yr, linetype = "Year fish first stocked"), 
+    color = "black", linewidth = 0.75
+  ) +
+        geom_vline(
+    data = sub %>% filter(!is.na(temperature_breakpoint_date)), 
+    aes(xintercept = temperature_breakpoint_date, linetype = "Temperature breakpoint"), 
+    color = "black", linewidth = 0.75
+  )+
+  scale_color_manual(values = taxa_colors) +
+ scale_linetype_manual(
+    values = c("N isotope breakpoint" = "dotted", "Year fish first stocked" = "solid", "Temperature breakpoint" = "dashed"),
+    breaks = c("N isotope breakpoint", "Year fish first stocked", "Temperature breakpoint") # Specify order here
+  )+
+          guides(
+    linetype = guide_legend(
+      keyheight = 2))
+ 
+
+ggsave("3_Figures/FigX_V9_zooplankton_top_relative_abundance.png",height=10, width=9, units="in")
+
+```
+
+
+#### iii. linear mixed effects models
+```{r}
+# run mixed effects models over prism time frame and switch the sign for nitrogen deposition
+lme_data <-sub %>% filter(is.na(mean_air_temp_degC_interval)==F & is.na(d15N_diff_from_start)==F) %>% select(Abundance,mean_air_temp_degC_interval,d15N_diff_from_start,fish_present_binary,lake_name,Genus_plus, mid_cm) %>%   
+        arrange(lake_name,Genus_plus,desc(mid_cm)) %>% group_by(lake_name) %>% mutate(time_seq=row_number()) %>% ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
+
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$Genus_plus)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_interval + d15N_diff_from_start + fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(Genus_plus == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term")%>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+
+model_output<-model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        mutate(term = case_when(term=="(Intercept)"~"Intercept",
+                                term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+                                term=="d15N_diff_from_start"~"d15N",
+                                term=="fish_present_binary"~"Fish presence"),
+        term = factor(term, levels = c("Intercept","Mean annual air\ntemperature (deg C)","d15N", "Fish presence"))) %>% filter(!term=="Intercept")
+
+
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+  geom_point(size = 4, shape = 21, stroke = 1.5) + 
+  custom_theme()+         
+  scale_fill_manual(values = taxa_colors) + 
+  scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+  labs(x = "Estimate", 
+       y = "",
+       fill = "Taxonomic group",
+       color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+  scale_y_discrete(labels = function(term) {
+    ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+ggsave("3_Figures/FigX_V9_zooplankton_LME.png",height=4, width=7, units="in")
+
+
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_output.csv")
+```
+
+
+
+
+
+
+After this, switch the sign for nitrogen deposition and add in the climate part
+next do the zooplankton BLAST
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Time series test
+```{r}
+# test<- sub %>% filter(lake_name=="Canyon" & subdivision=="Chlorophyta") %>% arrange(time_seq)
+# y<-ts(test$Abundance,start=1, end=nrow(test),frequency = 1)
+# 
+# tseries::adf.test(y, k=4)
+# TSA::acf(y,type="correlation",drop.lag.0=T)  # ACF plot
+# TSA::acf(y,type="partial")  # PACF plot
+# eacf(y,ar.max=7, ma.max=7) # EACF plot
+# 
+# fit<-forecast::auto.arima(y, seasonal=F, stationary=F, trace=T)
+# pred<-fitted(fit)
+# 
+# plot(y); lines(c(time(y)), pred,lty=2,col="purple")
+```
+
+
+
+try zooplankton with less abundant genuses
+plot relative abundances of the phototrophs to see who is driving change
+plot the non phototrophs (other)
+
+
+run functional assignment for V9
+
+For manuscript: 
+- need to mention could be feedbacks between community and d15N values
