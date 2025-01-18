@@ -337,3 +337,118 @@ legend("topright", legend = c("Fish present","Fishless"), col = c("black","white
 dev.off()
 ```
 
+
+
+
+
+
+paste0("2_DataAnalysis/BLAST_zooplankton/",Sys.Date(),"_V7_ZOTU_Maxillopoda_Branchiopoda_all_lakes.fasta"),
+```{r}
+seqs<-Biostrings::readDNAStringSet(paste0("2_DataAnalysis/BLAST_zooplankton/",Sys.Date(),"_V7_ZOTU_Maxillopoda_Branchiopoda_all_lakes.fasta"))
+```
+
+
+```{bash}
+salloc --mem=100GB --nodes=1 --cpus-per-task=32 --account=sedDNA --time=2:00:00
+module load  arcc/1.0  gcc/14.2.0
+module load blast/2.16.0
+
+blastn -query 2024-11-06_V7_ZOTU_Maxillopoda_Branchiopoda_all_lakes.fasta -db nt -out V7_not_remote_results.csv -qcov_hsp_perc 90 -perc_identity 94 -evalue 1e-50 -num_threads 32 -outfmt '10 qseqid qlen sseqid pident evalue bitscore qcovs length ssciname'
+
+
+
+```
+
+```{bash}
+#!/bin/bash
+#SBATCH --job-name blast_zoop
+#SBATCH --mem=100GB
+#SBATCH --time=2:00:00
+#SBATCH --cpus-per-task=32
+#SBATCH --account=sedDNA
+#SBATCH --output=BLAST_zooplankton_not_remote_ZOTU_%A.out
+
+
+module load miniconda3/23.11.0
+conda activate vsearch
+
+module load arcc/1.0 gcc/12.2.0
+module load blast-plus/2.13.0
+
+cd /gscratch/jvonegge/18S_Seq_Reanalysis_2024/blast/Max_Bra_all_lakes
+
+echo "Date BLASTed NOT using the -remote option:"
+date
+
+# BLAST search 
+blastn -query 2024-11-06_V7_ZOTU_Maxillopoda_Branchiopoda_all_lakes.fasta -db nt -out V7_not_remote_results.csv -qcov_hsp_perc 90 -perc_identity 94 -evalue 1e-50 -num_threads 32 -outfmt '10 qseqid qlen sseqid pident evalue bitscore qcovs length ssciname'
+
+# add headers to the output file
+echo "qseqid,qlen,sseqid,pident,evalue,bitscore,qcovs,length,ssciname" > headers.csv
+cat headers.csv V7_not_remote_results.csv > 0_V7_ZOTU_blast_not_remote_results_all_lakes.csv
+rm V7_not_remote_results.csv
+
+# BLAST search 
+blastn -query 2024-11-06_V9_ZOTU_Maxillopoda_Branchiopoda_all_lakes.fasta -db nt -out V9_not_remote_results.csv -qcov_hsp_perc 90 -perc_identity 94 -evalue 1e-50 -num_threads 32 -outfmt '10 qseqid qlen sseqid pident evalue bitscore qcovs length ssciname'
+
+# add headers to the output file
+cat headers.csv V9_not_remote_results.csv > 0_V9_ZOTU_blast_not_remote_results_all_lakes.csv
+
+rm headers.csv; rm V9_not_remote_results.csv
+
+```
+
+
+### V7 BLAST
+```{r}
+zoop <- subset_taxa(ps_V7_norm, Family %in% c("Branchiopoda", "Maxillopoda"))
+tax<-as.data.frame(tax_table(zoop))
+
+blast_results<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/BLAST_zooplankton/0_V7_ZOTU_blast_not_remote_results_all_lakes.csv")
+
+# remove the (Kuroda, 1948) becasue this is a CSV file and it looks for commas
+blast_results <- blast_results %>% filter(qseqid!=" 1948)")
+
+# remove the digits at the end of a scientific name (to help remove duplicates)
+blast_results$ssciname <- gsub("\\s\\d+$", "",blast_results$ssciname)
+# unique the data frame to remove duplicates
+blast_uniq <- blast_results %>% select(!c(sseqid,qlen,pident,evalue,bitscore,qcovs,length)) %>% unique(.)
+
+# dataframe of taxa that only have one blast assignment that matches the thresholds given.
+qseqid_counts <- table(blast_uniq$qseqid)
+
+# subset dataframe to get ESVs that have one blast 
+blast_singles <- blast_uniq[blast_uniq$qseqid %in% names(qseqid_counts[qseqid_counts == 1]), ]
+tax$qseqid<-rownames(tax)
+
+tax_blast<-left_join(tax, blast_singles, by="qseqid")
+
+# look at the ESVs with multiple blast results and decide:
+blast_mult <- blast_results[blast_results$qseqid %in% names(qseqid_counts[qseqid_counts > 1]), ]
+blast_mult <- blast_mult %>% select(!sseqid) %>% arrange(qseqid, desc(bitscore), desc(pident),desc(qcovs)) %>% unique(.)
+
+# filter out taxa that I have already assigned in ch. 2
+wy_zoop<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/ZooplanktonSedDNA/5_DataAnalysis/BLAST_zooplankton/Max_Bra/5_BLAST_V7_original_single_multiple.csv",row.names=1)
+
+table(wy_zoop$qseqid %in% blast_mult$qseqid)
+table(blast_mult$qseqid %in% wy_zoop$qseqid)
+table(tax_blast$qseqid %in% wy_zoop$qseqid)
+write.csv(blast_mult,"2_DataAnalysis/BLAST_zooplankton/1_BLAST_V7_multiple_hits.csv")
+
+# read back in the file after selection
+blast_selected<-read.csv("5_DataAnalysis/BLAST_zooplankton/Max_Bra/3_BLAST_V7_multiple_hits_selected.csv", header=T) %>% select(!c(qlen,pident,evalue,bitscore,qcovs,length))
+
+# make sure that I made selections for each of the ESVs
+table(blast_selected$qseqid %in%blast_mult$qseqid) # all should be TRUE
+
+tax_blast<-left_join(tax_blast, blast_selected, by="qseqid")
+
+for(i in 1:nrow(tax_blast)){
+if(is.na(tax_blast$ssciname.x[i])==T){tax_blast$ssciname.x[i]<-tax_blast$ssciname.y[i]}}
+
+tax_blast$ssciname.y<-NULL
+names(tax_blast)[10]<-"scciname"
+#write.csv(tax_blast, "5_DataAnalysis/BLAST_zooplankton/Max_Bra/4_BLAST_V7_original_single_multiple.csv")
+```
+
+
