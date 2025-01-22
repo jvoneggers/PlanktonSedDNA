@@ -7,6 +7,9 @@ metadata<-read.csv(list.files(pattern = "*_sample_data_dates.csv", full.names = 
 
 ### b. read in V7 files
 rarefied_esv_table <- read.csv("1_LoadData/2024-06-19_18S_V7_ZOTUexact_tax80_Rarefied_ESV_table.csv", row.names=1, header=T)
+# update name from CRES20_8.5 to CRES21_8.5
+colnames(rarefied_esv_table)[colnames(rarefied_esv_table) == "CRES20_8.5"] <- "CRES21_8.5"
+
 taxonomy <- read.csv("1_LoadData/2024-06-19_18S_V7_ZOTUexact_tax80_tax_table_notnorm.csv", row.names=1, header=T)
 
 ### c. Put into Phyloseq
@@ -41,6 +44,9 @@ rm(samp_dat)
 
 ### d. read in V9 files
 rarefied_esv_table <- read.csv("1_LoadData/2024-06-19_18S_V9_ZOTUexact_tax80_Rarefied_ESV_table.csv", row.names=1, header=T)
+# update name from CRES20_8.5 to CRES21_8.5
+colnames(rarefied_esv_table)[colnames(rarefied_esv_table) == "CRES20_8.5"] <- "CRES21_8.5"
+
 taxonomy <- read.csv("1_LoadData/2024-06-19_18S_V9_ZOTUexact_tax80_tax_table_notnorm.csv", row.names=1, header=T)
 
 ### e. put into Phyloseq
