@@ -94,8 +94,12 @@ source("1_LoadData/1_CreatePhyloseq_ZOTUexact_TAX80.R")
 ```
 
 
-# 1. Compile sample metadata
+# 1. Compile sample metadata and run 210Pb modelling
 ```{r}
+###############################################
+# 1. Compile sample metadata                  #
+###############################################
+
 # biogenic silica and C-H measurements
 
 # here I am reading in the sample list to help create unique biogenic silica error and C-H error measurements per lake. 
@@ -163,18 +167,20 @@ metadata<-left_join(metadata,lake, join_by(lake_name)); rm(lake)
 
 # remove lakes and samples not included in this study
 metadata<-metadata %>% filter(!lake_name %in% c("Green Park Lake","Solitude", "Delta", "Lake of the Crags")) %>% filter(!sample_id%in% c("SOLD21_0to1","SOLD21_1.5"))
-```
-660 samples from 14 lakes (removed two samples from Soldier lake that were too watery to do any analyses on)
-
-# 2. Model 210Pb dating and add more metadata
-
-Here I am:
-1. using Loess line to interpolate samples that did not have 210Pb measured but were within the range of 210Pb dating measurements
-2. extrapolating past the range of 210Pb dating using the dry mass accumulation rate (DMAR)
-3. creating three final columns that are a combination of the measured 210Pb dates, the interpolated dates, and extrapolated dates. 
 
 
-```{r}
+# - 660 samples from 14 lakes (removed two samples from Soldier lake that were too watery to do any analyses on)
+# - Only 659 of these samples had DNA run on them (SOLD21_22.5 was not sequenced)
+
+###############################################
+# 2. Model 210Pb dating and add more metadata #
+###############################################
+
+# Here I am:
+# 1. using Loess line to interpolate samples that did not have 210Pb measured but were within the range of 210Pb dating measurements
+# 2. extrapolating past the range of 210Pb dating using the dry mass accumulation rate (DMAR)
+# 3. creating three final columns that are a combination of the measured 210Pb dates, the interpolated dates, and extrapolated dates. 
+
 # indicate if 210Pb was measured for the sample
 pb <- metadata %>% mutate(lead210_measured=ifelse(is.na(lead210_measured)==T,"n","y"))
 
@@ -492,7 +498,7 @@ mutate(d15N_anomaly_mean_1800_1850 = d15N_CNS_adj - mean_d15N_1800_1850)
 ```
 
 
-# 3. Manuscript values
+# 2. Manuscript values
 
 Starting reads V9
 ```{r}
@@ -562,7 +568,7 @@ nrow(otu_table(ps_V9_norm))
 
 
 
-# 4. Plot 210Pb dates
+# 3. Plot 210Pb dates
 ```{r}
 pb <- read.csv(list.files(pattern = "*_sample_data_dates.csv", full.names = TRUE), row.names = 1, header = TRUE)
 
@@ -636,7 +642,7 @@ ggsave("3_Figures/FigX_210Pb_dates.png",height=5, width=14, units="in")
 ```
 Notes: min(poly$x)  -975.239, its monogram because it is so deep (38 cm), so cut off here at 30 cm while still reasonable
 
-# 5. Temperature histories
+# 4. Temperature histories
 
 For plotting/modeling: 
 - temp_anomaly_mid_cent_degC is just the anomaly temperatures from mid century mean from the interval to be plotted overtop actual prism data
@@ -784,7 +790,7 @@ ggsave("3_Figures/FigX_temperature_histories_anomaly_state.png", height=4,width=
 ```
 
 
-# 6. Nitrogen isotope data
+# 5. Nitrogen isotope data
 
 ### - breakpoint analysis for d15N
 ```{r}
@@ -957,7 +963,7 @@ ggsave("3_Figures/FigX_modern_Ndep_mag_d15N.png", height=6,width=8)
 
 ```
 
-# 7. Temp & N together
+# 6. Temp & N together
 ```{r}
 # update custom_theme with slightly larger font
 custom_theme <- function() {
@@ -1073,125 +1079,8 @@ ggsave("3_Figures/FigX_temperature_nitrogen_legend.png",height=5, width=9.5, uni
 ```
 
 
-# 8. Summary figures
 
-## a. NMDS
-```{r}
-# combine all three of the NMDS data frames
-nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_phyto.csv", header=T, row.names = 1) %>% 
-                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>% 
-                   rename(NMDS=MDS2) %>% 
-                   mutate(trophic_level="Phytoplankton"),
-
- 
-           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_hetero_prot.csv", header=T, row.names = 1) %>% 
-                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
-                   rename(NMDS=MDS2) %>% 
-                   mutate(trophic_level="Heterotrophic\nprotists"),
-
- 
-           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_zoop.csv", header=T, row.names = 1) %>% 
-                   select(sample_id, MDS1, d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
-                   rename(NMDS=MDS1) %>% 
-                   mutate(trophic_level="Zooplankton")
-           )
-
-# add in lake name and state
-nmds_comb <- left_join(nmds_comb, metadata %>% select(sample_id, lake_name, state), join_by(sample_id)) 
-
-nmds_comb$lake_name <- factor(nmds_comb$lake_name, levels = names(lake_colors))
-nmds_comb$state <- factor(nmds_comb$state, levels = c("Washington", "Wyoming","California"))
-nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplankton", "Heterotrophic\nprotists", "Zooplankton"))
-
-
-
-temp<-ggplot(nmds_comb, aes(x=mean_air_temp_degC_anomaly_combined,y=NMDS, color=lake_name))+
-        facet_grid(trophic_level~state)+
-        geom_point()+ 
-        scale_color_manual(values=lake_colors) +
-        custom_theme() + scale_y_reverse() +
-        labs(x="Average annual air temperature
-        anomaly from 1951-1980 mean (deg C)",
-             color="Lake")+ 
-        theme(strip.background = element_rect(fill = "white"),
-               strip.text.y = element_blank())
-
-
-
-nit<-ggplot(nmds_comb, aes(x=d15N_anomaly_mean_1800_1850,y=NMDS, color=lake_name))+
-        facet_grid(trophic_level~state)+
-        geom_point()+ 
-        scale_color_manual(values=lake_colors) +
-        custom_theme() + scale_y_reverse() + scale_x_reverse() +
-        labs(x=expression(delta^15 * "N anomaly from 1800-1850 mean"),
-             color="Lake") +
-        theme(strip.background = element_rect(fill = "white"),
-               axis.title.y = element_blank(),
-              axis.text.y = element_blank(),
-               strip.text.y = element_blank())
-
-
-
-fish <- ggplot(nmds_comb, aes(x = factor(fish_present_binary_YN), y = NMDS, color = lake_name)) +
-  facet_grid(trophic_level ~ state) +
-  geom_point() + 
-  scale_color_manual(values = lake_colors) +
-  custom_theme() + 
-  scale_y_reverse() +
-  labs(x = "Fish present",
-    color = "Lake") +
-        theme(strip.background = element_rect(fill = "white"),
-               axis.title.y = element_blank(),
-              axis.text.y = element_blank())
-
-(temp + nit + fish) + 
-  plot_layout(guides = "collect") & 
-  theme(legend.position = "right") &
-  guides(color = guide_legend(override.aes = list(size = 5)))  
-
-
-ggsave("3_Figures/FigX_NMDS_state_stressor_trophiclevel.png", height=6, width=16, units="in")
-
-
-```
-
-## b. LME models
-```{r}
-sig_lme<-rbind(
-        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Phytoplankton"),
-        
-        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Heterotrophic protists"),
-        
-        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_zooplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Zooplankton")
-) %>% 
-        
-mutate(Value=abs(Value)) %>% # make absolute value
-group_by(trophic_level, term) %>% # group by trophic level and term (regardless of fish or fishless LMEs)
-summarize(mean_effect=mean(Value)) %>% ungroup() %>% # calculate the mean effect for each trophic level and stressor (term)
-mutate(term=case_when(term=="d15N"~"Nitrogen deposition",
-                      term=="Mean annual air temperature\nanomaly (deg C)"~"Air temperature",
-                      term=="Fish presence"~"Fish"))
-
-# order trophic level and term
-sig_lme$trophic_level<-factor(sig_lme$trophic_level, levels=c("Phytoplankton", "Heterotrophic protists", "Zooplankton"))
-
-sig_lme$term<-factor(sig_lme$term, levels=c("Air temperature", "Nitrogen deposition","Fish"))
-
-ggplot(sig_lme, aes(x = factor(term), y = mean_effect)) +
-  geom_bar(stat = "identity") +
-  facet_wrap2(~trophic_level,  strip = strip_themed(
-      background_x = elem_list_rect(fill = c("#009E73","#56B4E9","#D55E00")))) +
-  theme_minimal() +
-  labs(
-    x = "Anthropogenic stressor",
-    y = "Mean absolute effect of significant taxa") + custom_theme() +
-        theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggsave("3_Figures/FigX_LME_summary.png", height=5, width=7, units="in")
-```
-
-
-# 9. Map
+# 7. Map
 ```{r}
 custom_theme <- function() {
   theme_bw() +
@@ -1697,7 +1586,7 @@ ggsave("3_Figures/FigX_map_SNOW.png", height=3, width=3)
 
 
 
-# 10. Relative abundance, NMDS, LMEs by trophic level
+# 8. Relative abundance, NMDS, LMEs by trophic level
 ## a. level 1 - phototrophic plankton
 
 ```{r}
@@ -1876,26 +1765,31 @@ model_output<-model_output %>%
                                 term=="fish_present_binary"~"Fish presence"))%>% 
         filter(!term=="Intercept")
 
-#model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
+####
 
-#model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish")) 
+model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)"))
 
-# LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
-#         geom_point(size = 4, shape = 21, stroke = 1.5) + 
-#         custom_theme()+ 
-#         facet_wrap(~fish)+
-#         scale_fill_manual(values = taxa_colors) + 
-#         scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
-#         labs(x = "Estimate", 
-#              y = "",
-#              fill = "Taxonomic group",
-#              color = expression(italic("P") <= 0.05)) +
-#         theme(strip.background = element_blank())+
-#         guides(fill = guide_legend(override.aes = list(color = NA)))+ 
-#         scale_y_discrete(labels = function(term) {
-#                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
-#         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish"))
 
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+        geom_point(size = 4, shape = 21, stroke = 1.5) +
+        custom_theme()+
+        facet_wrap(~fish)+
+        scale_fill_manual(values = taxa_colors) +
+        scale_color_manual(values = c(No="#00000000",Yes = "black")) +
+        labs(x = "Estimate",
+             y = "",
+             fill = "Taxonomic group",
+             color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+
+        scale_y_discrete(labels = function(term) {
+                ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+ggsave("3_Figures/FigX_V9_LME_phytoplankton_no_interactions.png",height=5, width=10, units="in")
+
+#####
 
 write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv")
 
@@ -2115,11 +2009,9 @@ write.csv(nmds_meta %>% select(sample_id, MDS1, MDS2, d15N_anomaly_mean_1800_185
 ```
 
 
-
-
 #### ii. select taxa
 ```{r}
-taxa_colors<-c( "#E69F00" ,"#56B4E9" ,"#009E73", "#F0E442" ,"#0072B2" ,"#D55E00" ,"#CC79A7" ,"#999999")
+taxa_colors<-c( "#F0E442" ,"#0072B2" ,"#CC79A7" ,"#999999","#D55E00")
 
 
 # group by taxonomic rank and turn to relative abundance
@@ -2127,7 +2019,7 @@ sub <- ps_V9_norm_sub %>% tax_glom(.,taxrank="subdivision") %>% transform_sample
 
 # subset dataset by taxa with the highest abundance in each group
 sub <- sub %>% filter(subdivision%in%c(
-        sub %>% filter(Abundance > 0.6) %>% select(subdivision) %>% unique(.) %>% pull() # this is where you select the abundance
+        sub %>% filter(Abundance > 0.55) %>% select(subdivision) %>% unique(.) %>% pull() # this is where you select the abundance
         ))
 
 unique(sub$subdivision)
@@ -2212,26 +2104,29 @@ model_output<-model_output %>%
                                 term=="fish_present_binary"~"Fish presence"))%>% 
         filter(!term=="Intercept")
 
-#model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
+#####
+model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)"))
 
-#model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish")) 
+model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish"))
 
-# LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
-#         geom_point(size = 4, shape = 21, stroke = 1.5) + 
-#         custom_theme()+ 
-#         facet_wrap(~fish)+
-#         scale_fill_manual(values = taxa_colors) + 
-#         scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
-#         labs(x = "Estimate", 
-#              y = "",
-#              fill = "Taxonomic group",
-#              color = expression(italic("P") <= 0.05)) +
-#         theme(strip.background = element_blank())+
-#         guides(fill = guide_legend(override.aes = list(color = NA)))+ 
-#         scale_y_discrete(labels = function(term) {
-#                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
-#         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+        geom_point(size = 4, shape = 21, stroke = 1.5) +
+        custom_theme()+
+        facet_wrap(~fish)+
+        scale_fill_manual(values = taxa_colors) +
+        scale_color_manual(values = c(No="#00000000",Yes = "black")) +
+        labs(x = "Estimate",
+             y = "",
+             fill = "Taxonomic group",
+             color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+
+        scale_y_discrete(labels = function(term) {
+                ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
+ggsave("3_Figures/FigX_V9_LME_heterotrophic_protists_no_interactions.png",height=5, width=10, units="in")
+#####
 
 write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_no_interactions.csv")
 
@@ -2457,7 +2352,7 @@ write.csv(nmds_meta %>% select(sample_id, MDS1, MDS2, d15N_anomaly_mean_1800_185
 #### ii. select taxa
 ```{r}
 taxa_colors<-palette.colors(palette = "Okabe-Ito")
-taxa_colors<-c("gray50", "#E69F00" ,"#56B4E9" ,"#F0E442","#0072B2","#D55E00" ,"#009E73" ,"gray")
+taxa_colors<-c("gray50", "#E69F00" ,"#56B4E9" ,"#F0E442","#0072B2","#D55E00" ,"#009E73" ,"#CC79A7")
 
 # group by taxonomic rank and turn to relative abundance
 sub <- ps_V9_norm_sub %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
@@ -2547,26 +2442,30 @@ model_output<-model_output %>%
                                 term=="fish_present_binary"~"Fish presence"))%>% 
         filter(!term=="Intercept")
 
-#model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
 
-#model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish")) 
+#####
+model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
 
-# LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
-#         geom_point(size = 4, shape = 21, stroke = 1.5) + 
-#         custom_theme()+ 
-#         facet_wrap(~fish)+
-#         scale_fill_manual(values = taxa_colors) + 
-#         scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
-#         labs(x = "Estimate", 
-#              y = "",
-#              fill = "Taxonomic group",
-#              color = expression(italic("P") <= 0.05)) +
-#         theme(strip.background = element_blank())+
-#         guides(fill = guide_legend(override.aes = list(color = NA)))+ 
-#         scale_y_discrete(labels = function(term) {
-#                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
-#         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish")) 
 
+LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+        geom_point(size = 4, shape = 21, stroke = 1.5) +
+        custom_theme()+
+        facet_wrap(~fish)+
+        scale_fill_manual(values = taxa_colors) +
+        scale_color_manual(values = c(No="#00000000",Yes = "black")) +
+        labs(x = "Estimate",
+             y = "",
+             fill = "Taxonomic group",
+             color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+
+        scale_y_discrete(labels = function(term) {
+                ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+ggsave("3_Figures/FigX_V9_LME_zooplankton_no_interactions.png",height=5, width=10, units="in")
+#####
 
 write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_output_no_interactions.csv")
 
@@ -2722,5 +2621,131 @@ ggsave("3_Figures/FigX_V9_zooplankton_NMDS_RelAbun_LME.png",height=10, width=20,
 
 ```
 Notes: one thing to change would be that we use subdivision for phytoplankton and heterotrophic protists and then taxonomic_group for zooplankton
+
+
+
+# 9. Summary figures
+
+## a. NMDS
+```{r}
+# combine all three of the NMDS data frames
+nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_phyto.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>% 
+                   rename(NMDS=MDS2) %>% 
+                   mutate(trophic_level="Phytoplankton"),
+
+ 
+           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_hetero_prot.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
+                   rename(NMDS=MDS2) %>% 
+                   mutate(trophic_level="Heterotrophic\nprotists"),
+
+ 
+           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_zoop.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS1, d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
+                   rename(NMDS=MDS1) %>% 
+                   mutate(trophic_level="Zooplankton")
+           )
+
+# add in lake name and state
+nmds_comb <- left_join(nmds_comb, metadata %>% select(sample_id, lake_name, state), join_by(sample_id)) 
+
+nmds_comb$lake_name <- factor(nmds_comb$lake_name, levels = names(lake_colors))
+nmds_comb$state <- factor(nmds_comb$state, levels = c("Washington", "Wyoming","California"))
+nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplankton", "Heterotrophic\nprotists", "Zooplankton"))
+
+
+
+temp<-ggplot(nmds_comb, aes(x=mean_air_temp_degC_anomaly_combined,y=NMDS, color=lake_name))+
+        facet_grid(trophic_level~state)+
+        geom_point()+ 
+        scale_color_manual(values=lake_colors) +
+        custom_theme() + scale_y_reverse() +
+        labs(x="Average annual air temperature
+        anomaly from 1951-1980 mean (deg C)",
+             color="Lake")+ 
+        theme(strip.background = element_rect(fill = "white"),
+               strip.text.y = element_blank())
+
+
+
+nit<-ggplot(nmds_comb, aes(x=d15N_anomaly_mean_1800_1850,y=NMDS, color=lake_name))+
+        facet_grid(trophic_level~state)+
+        geom_point()+ 
+        scale_color_manual(values=lake_colors) +
+        custom_theme() + scale_y_reverse() + scale_x_reverse() +
+        labs(x=expression(delta^15 * "N anomaly from 1800-1850 mean"),
+             color="Lake") +
+        theme(strip.background = element_rect(fill = "white"),
+               axis.title.y = element_blank(),
+              axis.text.y = element_blank(),
+               strip.text.y = element_blank())
+
+
+
+fish <- ggplot(nmds_comb, aes(x = factor(fish_present_binary_YN), y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +
+  geom_point() + 
+  scale_color_manual(values = lake_colors) +
+  custom_theme() + 
+  scale_y_reverse() +
+  labs(x = "Fish present",
+    color = "Lake") +
+        theme(strip.background = element_rect(fill = "white"),
+               axis.title.y = element_blank(),
+              axis.text.y = element_blank())
+
+(temp + nit + fish) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 5)))  
+
+
+ggsave("3_Figures/FigX_NMDS_state_stressor_trophiclevel.png", height=6, width=16, units="in")
+
+
+```
+
+## b. LME models
+```{r}
+sig_lme<-rbind(
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Phytoplankton"),
+        
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Heterotrophic protists"),
+        
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_zooplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Zooplankton")
+) %>% 
+        
+mutate(Value=abs(Value)) %>% # make absolute value
+group_by(trophic_level, term) %>% # group by trophic level and term (regardless of fish or fishless LMEs)
+summarize(mean_effect=mean(Value)) %>% ungroup() %>% # calculate the mean effect for each trophic level and stressor (term)
+mutate(term=case_when(term=="d15N"~"Nitrogen deposition",
+                      term=="Mean annual air temperature\nanomaly (deg C)"~"Air temperature",
+                      term=="Fish presence"~"Fish"))
+
+# order trophic level and term
+sig_lme$trophic_level<-factor(sig_lme$trophic_level, levels=c("Phytoplankton", "Heterotrophic protists", "Zooplankton"))
+
+sig_lme$term<-factor(sig_lme$term, levels=c("Air temperature", "Nitrogen deposition","Fish"))
+
+ggplot(sig_lme, aes(x = factor(term), y = mean_effect)) +
+  geom_bar(stat = "identity") +
+  facet_wrap2(~trophic_level,  strip = strip_themed(
+      background_x = elem_list_rect(fill = c("#009E73","#56B4E9","#D55E00")))) +
+  theme_minimal() +
+  labs(
+    x = "Anthropogenic stressor",
+    y = "Mean absolute effect of significant taxa") + custom_theme() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("3_Figures/FigX_LME_summary.png", height=5, width=7, units="in")
+```
+
+
+## c. plot LME models without interactions
+
+```{r}
+
+```
 
 
