@@ -2742,10 +2742,265 @@ ggsave("3_Figures/FigX_LME_summary.png", height=5, width=7, units="in")
 ```
 
 
-## c. plot LME models without interactions
-
+## c. clustered relative abundances
+- maybe want to doublec check any changes other than taking out unknown for the heterotrophic protists and changing the heterotrophic protists threshold to 0.55 
 ```{r}
+
+## PHYTOPLANKTON AND HETEROTROPHIC PROTISTS
+# read in the functional assignment file remove ~4k taxa that assign to fungi
+tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+tax_fun <- as.matrix(tax_fun) # convert to matrix
+ps_V9_norm_sub<-ps_V9_norm
+tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+rm(tax_fun)
+
+
+ps_V9_norm_phyto<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs"))
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_phyto %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(subdivision%in%c(
+        sub %>% filter(Abundance > 0.35) %>% select(subdivision) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+# rename the groups so there isn't an _X
+sub <- sub %>% mutate(subdivision= case_when(subdivision=="Chlorophyta_X" ~ "Chlorophyta",
+                                             subdivision=="Streptophyta_X" ~ "Streptophyta",
+                                             TRUE~subdivision
+                                             ))
+
+
+all_trophic<-sub %>% mutate(taxonomic_group=subdivision, trophic_level="phytoplankton") %>% select(-subdivision)
+
+ps_V9_norm_hetero<-subset_taxa(ps_V9_norm_sub, !trophic_mode %in% c("phototrophs","phototrophs/mixotrophs","mixotrophs", "unknown")& !class %in% c("Arthropoda","Unassigned","Nematoda","Craniata","Tardigrada","Annelida","Gastrotricha","Platyhelminthes","Porifera","Mollusca","Metazoa_X","Cnidaria","Bryozoa")) 
+
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_hetero %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(subdivision%in%c(
+        sub %>% filter(Abundance > 0.55) %>% select(subdivision) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+unique(sub$subdivision)
+
+# rename the groups so there isn't an _X
+sub <- sub %>% mutate(subdivision= case_when(subdivision=="Evosea_X" ~ "Evosea",
+                                             subdivision=="Metazoa" ~ "Rotifera",
+                                             TRUE~subdivision
+                                             ))
+
+all_trophic<-sub %>% mutate(taxonomic_group=subdivision, trophic_level="heterotrophic protists")%>% select(-subdivision) %>% rbind(all_trophic,.)
+
+# remove other taxonomic levels aside from taxonomic_group
+all_trophic <- all_trophic %>% select(-c(domain,supergroup,division))
+
+# ZOOPLANKTON
+# read in taxonomy assigned in Ch. 2
+tax_blast<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/ZooplanktonSedDNA/5_DataAnalysis/BLAST_zooplankton/Max_Bra/5_BLAST_V9_original_single_multiple_updated.csv", row.names=1,na.strings="") %>% column_to_rownames(., var="qseqid") %>% 
+   mutate(taxonomic_group = replace_na(taxonomic_group, "Unassigned")) %>% select(Kingdom,taxonomic_group)
+tax_blast <- as.matrix(tax_blast) # convert to matrix
+ps_V9_norm_sub<-ps_V9_norm
+tax_table(ps_V9_norm_sub) <- tax_table(tax_blast) # replace taxonomy table in the phyloseq object
+rm(tax_blast)
+
+# congomerate right away to taxonomic_group
+ps_V9_norm_zoop <- ps_V9_norm_sub %>% tax_glom(., taxrank = "taxonomic_group")
+
+
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_zoop %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(taxonomic_group%in%c(
+        sub %>% filter(Abundance > 0.4) %>% select(taxonomic_group) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+unique(sub$taxonomic_group)
+
+sub <- sub %>% select(-Kingdom)
+
+all_trophic <- sub  %>% mutate(trophic_level="zooplankton") %>% rbind(all_trophic,.)
+
+
+all_trophic <-all_trophic %>% select(Abundance,mean_air_temp_degC_anomaly_combined,d15N_anomaly_mean_1800_1850,fish_present_binary,lake_name,taxonomic_group, mid_cm, fish, trophic_level, date_mid_AD_combo, state) %>% arrange(trophic_level, taxonomic_group,lake_name,desc(mid_cm)) %>% group_by(lake_name, taxonomic_group) %>% mutate(time_seq=row_number()) %>% ungroup() %>% mutate(abundance=Abundance) %>% select(-Abundance) %>% 
+        mutate(trophic_level_tax_group=paste(trophic_level,taxonomic_group, sep=" - "))
+
+# change skelton to be in the fishless lake category for the "fish" column
+all_trophic <- all_trophic %>% mutate(fish=case_when(lake_name=="Skelton"~0,
+                                                     !lake_name=="Skelton"~fish))
+
+# factor lake name to match the lake colors
+all_trophic$lake_name<-factor(all_trophic$lake_name, levels=names(lake_colors))
+
+lake_colors_fish <- c("Crescent" = "#63B8FF", 
+                 "Canyon" = "#63B8FF", 
+                 "Eyrie" = "#63B8FF",
+                 "Lightning" = "#63B8FF",
+                 "Soldier" = "#63B8FF", 
+                 "Skelton" = "#63B8FF", 
+                  "Louise" = "#EE6363",
+                 "Monogram" = "#EE6363",
+                 "Scott" = "#EE6363",
+                 "Black Rock" = "#EE6363",
+                 "Footprint" = "#EE6363",
+                 "Lost" = "#EE6363",
+                 "Bullfrog" = "#EE6363",
+                 "Middle Gaylor"= "#EE6363")
+
+all_trophic$lake_name_fish<-factor(all_trophic$lake_name, levels=names(lake_colors_fish))
+
+all_trophic$state<-factor(all_trophic$state, levels=c("Washington","Wyoming","California"))
+
+
+# order the trophic levels so phytoplankton comes first
+tax_order<-unique(all_trophic$trophic_level_tax_group)
+tax_order<-tax_order[c(6,7,8,9,1,2,3,4,5,10,11,12,13,14,15,16,17)]
+all_trophic$trophic_level_tax_group<-factor(all_trophic$trophic_level_tax_group, levels=tax_order)
+rm(tax_order)
+
+
+
+# remove extra objects
+rm(sub);rm(ps_V9_norm_hetero);rm(ps_V9_norm_phyto);rm(ps_V9_norm_sub); rm(ps_V9_norm_zoop)
 
 ```
 
+plot abundances by lake name and by fish/fishless
+```{r}
+ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name))+
+        facet_wrap(~trophic_level_tax_group)+
+        geom_line() + 
+        custom_theme()+
+        labs(color="Lake",
+             y="Relative abundance (proportion)",
+             x="Date (Common Era)")+
+        scale_color_manual(values=lake_colors)
+
+ggsave("3_Figures/FigX_clustered_rel_abund_lake.png", height=10, width=20, units="in")
+
+ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name_fish))+
+        facet_wrap(~trophic_level_tax_group)+
+        geom_line() + 
+        custom_theme()+
+        labs(color="Lake",
+             y="Relative abundance (proportion)",
+             x="Date (Common Era)")+
+        scale_color_manual(values=lake_colors_fish)
+
+ggsave("3_Figures/FigX_clustered_rel_abund_lake_fish.png", height=10, width=20, units="in")
+
+```
+
+Averages overall
+```{r}
+avg_lake_50yrs<-all_trophic %>% 
+        mutate(date_window_50yrs=cut(date_mid_AD_combo,
+                        breaks = seq(1400, 2050, by = 50),
+                        right=F, # intervals are left closed [1400,1450)
+                        labels = paste(seq(1400, 2000, by = 50), 
+                                       seq(1449, 2049, by = 50), sep = "-")))%>%
+       group_by(trophic_level_tax_group, date_window_50yrs) %>% 
+        summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-")))))
+        
+
+ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name))+
+        facet_wrap(~trophic_level_tax_group)+
+        geom_line() + 
+        geom_line(data=avg_lake_50yrs, aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="black")+
+        custom_theme()+
+        labs(color="Lake",
+             y="Relative abundance (proportion)",
+             x="Date (Common Era)")+
+        scale_color_manual(values=lake_colors)
+
+ggsave("3_Figures/FigX_clustered_rel_abund_lake_avg_50yrs.png", height=10, width=20, units="in")
+
+
+
+avg_lake_20yrs<-all_trophic %>%         
+        mutate(date_window_20yrs=cut(date_mid_AD_combo,
+                       breaks = c(seq(1400, 2021, by = 20), 2022), 
+                        right = FALSE, 
+                        labels = c(paste(seq(1400, 2000, by = 20), 
+                                         seq(1419, 2019, by = 20), sep = "-"), 
+                                   "2020-2021"))) %>% 
+               group_by(trophic_level_tax_group, date_window_20yrs) %>% 
+                summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_20yrs)), "-")))))
+
+
+ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name))+
+        facet_wrap(~trophic_level_tax_group)+
+        geom_line() + 
+        geom_line(data=avg_lake_20yrs, aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="black")+
+        custom_theme()+
+        labs(color="Lake",
+             y="Relative abundance (proportion)",
+             x="Date (Common Era)")+
+        scale_color_manual(values=lake_colors)
+
+ggsave("3_Figures/FigX_clustered_rel_abund_lake_avg_20yrs.png", height=10, width=20, units="in")
+```
+
+Averages by fish status
+```{r}
+avg_lake_50yrs<-all_trophic %>% 
+        mutate(date_window_50yrs=cut(date_mid_AD_combo,
+                        breaks = seq(1400, 2050, by = 50),
+                        right=F, # intervals are left closed [1400,1450)
+                        labels = paste(seq(1400, 2000, by = 50), 
+                                       seq(1449, 2049, by = 50), sep = "-")))%>%
+       group_by(trophic_level_tax_group, date_window_50yrs, fish) %>% 
+        summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-")))))
+        
+
+ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name_fish))+
+        facet_wrap(~trophic_level_tax_group)+
+        geom_line(alpha = 0.6) + 
+        geom_line(data=avg_lake_50yrs %>% filter(fish==1), aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="#EE6363")+
+        geom_line(data=avg_lake_50yrs %>% filter(fish==0), aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="#63B8FF")+
+        custom_theme()+
+        labs(color="Lake",
+             y="Relative abundance (proportion)",
+             x="Date (Common Era)")+
+        scale_color_manual(values=lake_colors_fish)
+
+ggsave("3_Figures/FigX_clustered_rel_abund_lake_fish_avg_50yrs.png", height=10, width=20, units="in")
+
+```
+
+
+Averages by state
+```{r}
+avg_lake_50yrs<-all_trophic %>% 
+        mutate(date_window_50yrs=cut(date_mid_AD_combo,
+                        breaks = seq(1400, 2050, by = 50),
+                        right=F, # intervals are left closed [1400,1450)
+                        labels = paste(seq(1400, 2000, by = 50), 
+                                       seq(1449, 2049, by = 50), sep = "-")))%>%
+       group_by(trophic_level_tax_group, date_window_50yrs, state) %>% 
+        summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-")))))
+        
+
+ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name))+
+        facet_wrap(~trophic_level_tax_group)+
+        geom_line(alpha = 0.6) + 
+        geom_line(data=avg_lake_50yrs %>% filter(state=="Washington"), aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="orange")+
+        geom_line(data=avg_lake_50yrs %>% filter(state=="Wyoming"), aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="#008080")+
+        geom_line(data=avg_lake_50yrs %>% filter(state=="California"), aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="#5D478B")+
+        custom_theme()+
+        labs(color="Lake",
+             y="Relative abundance (proportion)",
+             x="Date (Common Era)")+
+        scale_color_manual(values=lake_colors)
+
+
+ggsave("3_Figures/FigX_clustered_rel_abund_lake_state_avg_50yrs.png", height=10, width=20, units="in")
+
+```
 
