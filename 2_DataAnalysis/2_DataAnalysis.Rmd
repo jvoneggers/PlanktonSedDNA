@@ -617,7 +617,7 @@ ggplot() +
     ~ lake_name, ncol = 7, strip.position = "top",
     strip = strip_themed(
       background_x = elem_list_rect(fill = lake_colors),
-      text_x = elem_list_text(color = ifelse(unique(lk$lake_name)%in% c("Lightning","Lost","Scott","Skelton","Soldier"), "white", "black"))
+      text_x = elem_list_text(color = ifelse(unique(lk$lake_name)%in% c("Lightning","Lost","Scott","Skelton"), "white", "black"))
     )
   )+
   labs(x = "Date (Common Era)", y = "Depth (cm)")+
@@ -749,7 +749,7 @@ ggplot(data=metadata, aes(x=date_mid_AD_combo,y=mean_air_temp_degC_anomaly_combi
     strip = strip_themed(
       background_x = elem_list_rect(fill = lake_colors_2),
       text_x = elem_list_text(
-        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton","Soldier"), "white", "black"))))+
+        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton"), "white", "black"))))+
         geom_line(col="white") + 
         geom_line(data=prism, aes(x=Date,y=mean_air_temp_degC_anomaly_prism), linetype="solid",col="gray") + 
         geom_line(aes(x=date_mid_AD_combo,y=mean_air_temp_degC_anomaly_extended), linetype="dashed") +
@@ -855,7 +855,7 @@ ggplot(data = meta, aes(x = date_mid_AD_combo, y = d15N_anomaly_mean_1800_1850))
     strip = strip_themed(
       background_x = elem_list_rect(fill = lake_colors_2),
       text_x = elem_list_text(
-        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton","Soldier"), "white", "black")))) +
+        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton"), "white", "black")))) +
   geom_line() +
   scale_y_reverse() +
   custom_theme() +
@@ -1584,9 +1584,148 @@ ggsave("3_Figures/FigX_map_SNOW.png", height=3, width=3)
 ```
 
 
+# 8. Assign unknown trophic mode
+For ESVs with unknown trophic modes (comprising 7.8% of the total reads including fungi, and 8.8% if fungi are excluded), we assessed the proportion of the different trophic modes within each subdivision or divison, if necessary, and assigned the unknown ESVs to the most frequent (most abundant) trophic level (heterotrophic protists or phytoplankton). For the few remaining taxa within each division and subdivision that had unknown trophic mode, we placed them in the heterotrophic protists groups. These unknown functions accounted for (0.0002071534) of total reads with fungi and . 
+```{r}
+# read in the functional assignment file remove ~4k taxa that assign to fungi
+tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+tax_fun <- as.matrix(tax_fun) # convert to matrix
+ps_V9_norm_sub<-ps_V9_norm
+tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+rm(tax_fun)
+
+# unknowns
+ps_V9_norm_sub2<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("unknown"))
+tax_tab<-as.data.frame(ps_V9_norm_sub2@tax_table)
+table(tax_tab$subdivision)
+
+    #    Alveolata_X           Cercozoa     Chrompodellids       Colponemidia      Cryptophyta_X 
+    #              1                416                 23                  1                 19 
+    # Dinoflagellata          Discoba_X         Euglenozoa       Foraminifera            Gyrista 
+    #            377                  8                284                 13                152 
+    #   Haptophyta_X Hemimastigophora_X      Nibbleridia_X    Stramenopiles_X 
+    #             13                 11                  1                  1 
+
+# go through each unknown individually and see what most of the ESVs assign to
+ps_V9_norm_sub2<-subset_taxa(ps_V9_norm_sub, subdivision %in%c("Stramenopiles_X"))
+ps_V9_norm_sub2<-subset_taxa(ps_V9_norm_sub, division %in%c("Stramenopiles"))
+tax_tab<-as.data.frame(ps_V9_norm_sub2@tax_table)
+table(tax_tab$trophic_mode)
+
+# few stats
+
+# What is the proportion of reads for the unknown group going into heterotrophic protists
+ps_V9_norm_sub2<-subset_taxa(ps_V9_norm_sub, subdivision %in% c("Colponemidia", "Hemimastigophora_X", "Nibbleridia_X", "Foraminifera"))
+
+# percent of total (fungi included)
+round(sum(colSums(ps_V9_norm_sub2@otu_table))/sum(colSums(ps_V9_norm@otu_table))*100, digits=2)
+# 0.02
+# percen of total (fungi excluded)
+round(sum(colSums(ps_V9_norm_sub2@otu_table))/sum(colSums(ps_V9_norm_sub@otu_table))*100, digits=2)
+# 0.02
 
 
-# 8. Relative abundance, NMDS, LMEs by trophic level
+# What is the proportion of reads for all ESVs assigned to "unknown" (if fungi are included)
+ps_V9_norm_sub2<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("unknown"))
+# percent of total
+round(sum(colSums(ps_V9_norm_sub2@otu_table))/sum(colSums(ps_V9_norm@otu_table))*100, digits=2)
+# 7.80
+
+# What is the proportion of reads for all ESVs assigned to "unknown" (if fungi are excluded)
+round(sum(colSums(ps_V9_norm_sub2@otu_table))/sum(colSums(ps_V9_norm_sub@otu_table))*100, digits=2)
+#  8.79
+
+```
+Alveolata_X - hetero
+  heterotrophs              parasites            phototrophs phototrophs/mixotrophs (Alveolata division)
+           695                    526                    287                      1 
+       unknown 
+           402 
+
+
+Cercozoa - hetero
+heterotrophs    parasites      unknown 
+         767          153          416 
+
+
+Chrompodellids - hetero
+heterotrophs  phototrophs      unknown 
+          16            3           23
+
+
+Colponemidia - unknown (hetero)
+unknown 
+      1
+
+
+Cryptophyta_X - photo
+heterotrophs   mixotrophs      unknown 
+           5            7           19
+heterotrophs   mixotrophs      unknown (Cryptophyta divsiion)
+           5            7           19 
+
+
+Dinoflagellata  - photo   
+   phototrophs phototrophs/mixotrophs                unknown 
+           284                      1                    377
+
+
+Discoba_X  - hetero      
+heterotrophs      unknown 
+         140            8 
+ heterotrophs    parasites  phototrophs      unknown (Discoba division)
+         429           10           19          292
+
+
+Euglenozoa - hetero
+heterotrophs    parasites  phototrophs      unknown 
+         289           10           19          284 
+
+
+Foraminifera  - unknown (hetero) 
+unknown 
+     13
+
+
+Gyrista - Photo
+heterotrophs   mixotrophs    parasites  phototrophs  saprotrophs      unknown 
+          14            4          287          678            5          152
+
+
+Haptophyta_X  - photo
+mixotrophs    unknown 
+        10         13 
+mixotrophs    unknown (Haptophyta division)
+        10         13 
+
+
+Hemimastigophora_X - unknown (hetero)
+unknown 
+     11
+unknown (Hemimastigophora division)
+     11
+
+
+Nibbleridia_X  - unknown (hetero)
+unknown 
+      1 
+unknown (Nibbleridia division)
+      1 
+
+
+Stramenopiles_X - hetero
+unknown 
+      1 
+heterotrophs   mixotrophs    parasites  phototrophs  saprotrophs      unknown (Stramenopiles divison)
+         420            4          287          678            5          153 
+420 + 287 + 5 = 712       4 +678 = 682
+
+phytoplankton: Cryptophyta_X, Dinoflagellata, Gyrista, Haptophyta_X
+heterotrophic protists: Alveolata_X, Cercozoa, Chrompodellids, Discoba_X, Euglenozoa, Stramenopiles_X
+unknown but will go to heterotrophic protists: Colponemidia, Foraminifera, Hemimastigophora_X, Nibbleridia_X
+
+
+# 9. Relative abundance, NMDS, LMEs by trophic level
 ## a. level 1 - phototrophic plankton
 
 ```{r}
@@ -1596,8 +1735,37 @@ tax_fun <- as.matrix(tax_fun) # convert to matrix
 ps_V9_norm_sub<-ps_V9_norm
 tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
 rm(tax_fun)
-ps_V9_norm_sub<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs"))
+ps_V9_norm_sub<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs") | trophic_mode =="unknown" & subdivision%in%c("Cryptophyta_X", "Dinoflagellata", "Gyrista", "Haptophyta_X"))
+# included phototrophs, mixotrophs, and phototrophs/mixotrophs along with four subdivisions with "unknown" functions but the primary trophic mode of other ESVs in this subdivision (or division if there is an _X at the end) is phototrophic, mixotrophic, or a combo of the two
+
+
+# # double check that we kept all the phototrophs and mixotrophs
+# tax_tab<-as.data.frame(ps_V9_norm_sub@tax_table)
+# table(tax_tab$trophic_mode)
+# 
+# # and that when we subset with just the right taxa
+# tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+# tax_fun <- as.matrix(tax_fun) # convert to matrix
+# ps_V9_norm_sub<-ps_V9_norm
+# tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+# rm(tax_fun)
+# ps_V9_norm_sub2<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs"))
+# tax_tab<-as.data.frame(ps_V9_norm_sub2@tax_table)
+# table(tax_tab$trophic_mode)
+# 
+# # and that we selected ther right unknowns
+# tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+# tax_fun <- as.matrix(tax_fun) # convert to matrix
+# ps_V9_norm_sub<-ps_V9_norm
+# tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+# rm(tax_fun)
+# ps_V9_norm_sub2<-subset_taxa(ps_V9_norm_sub, trophic_mode =="unknown" & subdivision%in%c("Cryptophyta_X", "Dinoflagellata", "Gyrista", "Haptophyta_X"))
+# tax_tab<-as.data.frame(ps_V9_norm_sub2@tax_table)
+# table(tax_tab$subdivision)
+# sum(table(tax_tab$subdivision))
+# rm(ps_V9_norm_sub2)
 ```
+
 
 #### i. NMDS
 ```{r}
@@ -1700,10 +1868,7 @@ sub <- sub %>% left_join(read.csv("2_DataAnalysis/temperature_anomaly_breakpoint
 sub$lake_name <- factor(sub$lake_name, levels = names(lake_colors_2))
 ```
 
-
-
 #### iii. linear mixed effects models
-
 ```{r}
 # select variables for modeling, add time sequence for each sediment core, switch the sign for nitrogen deposition
 lme_data <-sub %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>%
@@ -1716,7 +1881,7 @@ lme_data <-sub %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>%
                mid_cm) %>%   
         arrange(lake_name,subdivision,desc(mid_cm)) %>% 
         group_by(lake_name) %>% mutate(time_seq=row_number()) %>% 
-        ungroup()
+        ungroup() %>% mutate(d15N_anomaly_mean_1800_1850=(d15N_anomaly_mean_1800_1850*(-1)))
 
 # split by fish and fishless lakes
 
@@ -1760,18 +1925,18 @@ model_output<-model_output %>%
         mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
                                  p.value > 0.05 ~ "No")) %>% 
         mutate(term = case_when(term=="(Intercept)"~"Intercept",
-                                term=="mean_air_temp_degC_anomaly_combined"~"Mean annual air temperature\nanomaly (deg C)",
-                                term=="d15N_anomaly_mean_1800_1850"~"d15N",
-                                term=="fish_present_binary"~"Fish presence"))%>% 
+                                term=="mean_air_temp_degC_anomaly_combined"~"Air\ntemperature",
+                                term=="d15N_anomaly_mean_1800_1850"~"Nitrogen\ndeposition",
+                                term=="fish_present_binary"~"Fish"))%>% 
         filter(!term=="Intercept")
 
-####
 
-model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)"))
+#####
+model_output$term <- factor(model_output$term, levels = c("Fish","Nitrogen\ndeposition","Air\ntemperature")) 
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish"))
 
-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
         geom_point(size = 4, shape = 21, stroke = 1.5) +
         custom_theme()+
         facet_wrap(~fish)+
@@ -1787,13 +1952,16 @@ ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.
                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
-ggsave("3_Figures/FigX_V9_LME_phytoplankton_no_interactions.png",height=5, width=10, units="in")
+#ggsave("3_Figures/FigX_V9_LME_phytoplankton_no_interactions.png",height=5, width=10, units="in")
 
 #####
 
-write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv")
+write.csv(as.data.frame(model_output %>%         
+               mutate(term=case_when(term=="Nitrogen\ndeposition"~"Nitrogen deposition",
+                      term=="Air\ntemperature"~"Air temperature",
+                      term=="Fish"~"Fish"))), "2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv")
 
-#sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
 ```
 
 interactions of all three and subcombinations
@@ -1855,7 +2023,7 @@ model_output$term <- factor(model_output$term)
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish")) 
 
-LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
         geom_point(size = 4, shape = 21, stroke = 1.5) + 
         custom_theme()+ 
         facet_wrap(~fish)+
@@ -1871,9 +2039,11 @@ LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = p
                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
+ggsave("3_Figures/FigX_V9_LME_phytoplankton_interactions.png",height=5, width=10, units="in")
+
 write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_phytoplankton_model_output_interactions.csv")
 
-sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+#sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
 ```
 
 
@@ -1890,7 +2060,7 @@ RA<-ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivi
     strip = strip_themed(
       background_x = elem_list_rect(fill = lake_colors_2),
       text_x = elem_list_text(
-        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton","Soldier"), "white", "black")))) +
+        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton"), "white", "black")))) +
   labs(x = "Date (Common Era)", 
        y = "Relative abundance (proportion)", 
        color = "Taxonomic group", 
@@ -1954,10 +2124,75 @@ tax_fun <- as.matrix(tax_fun) # convert to matrix
 ps_V9_norm_sub<-ps_V9_norm
 tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
 rm(tax_fun)
-ps_V9_norm_sub<-subset_taxa(ps_V9_norm_sub, !trophic_mode %in% c("phototrophs","phototrophs/mixotrophs","mixotrophs", "unknown")& !class %in% c("Arthropoda","Unassigned","Nematoda","Craniata","Tardigrada","Annelida","Gastrotricha","Platyhelminthes","Porifera","Mollusca","Metazoa_X","Cnidaria","Bryozoa")) 
-# remove phototrophic/mixotrophic organisms and keep only Rotifers from the metazoan subdivision
+ps_V9_norm_sub <- subset_taxa(ps_V9_norm_sub, 
+  (!trophic_mode %in% c("phototrophs", "phototrophs/mixotrophs", "mixotrophs") & 
+   !(subdivision == "Metazoa" & class != "Rotifera")) & 
+  !(trophic_mode == "unknown" & !subdivision %in% c("Alveolata_X", "Cercozoa", "Chrompodellids", "Discoba_X", "Euglenozoa", "Stramenopiles_X", "Colponemidia", "Foraminifera", "Hemimastigophora_X", "Nibbleridia_X")))
+# remove phototrophic/mixotrophic organisms
+# keep only Rotifers from the metazoan subdivision (!(subdivision == "Metazoa" & class != "Rotifera"))
+# add in unknowns from the specific groups
+
+
+
+
+# # double check that we removed all the phototrophs and mixotrophs
+# tax_tab<-as.data.frame(ps_V9_norm_sub@tax_table)
+# table(tax_tab$trophic_mode)# no phytoplankton, 759 unknowns
+# table(tax_tab$class=="Rotifera") # 31 rotifers
+# 
+# 
+# # check all Rotifera ESVs included
+# tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+# tax_fun <- as.matrix(tax_fun) # convert to matrix
+# ps_V9_norm_sub<-ps_V9_norm
+# tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+# rm(tax_fun)
+# ps_V9_norm_sub <- subset_taxa(ps_V9_norm_sub,
+#   class=="Rotifera")
+# tax_tab<-as.data.frame(ps_V9_norm_sub@tax_table)
+# table(tax_tab$class)
+# # 31 Rotifera
+# 
+# # check all Rotifera ESVs included
+# tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+# tax_fun <- as.matrix(tax_fun) # convert to matrix
+# ps_V9_norm_sub<-ps_V9_norm
+# tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+# rm(tax_fun)
+# ps_V9_norm_sub <- subset_taxa(ps_V9_norm_sub,
+#   trophic_mode == "unknown" & subdivision %in% c("Alveolata_X", "Cercozoa", "Chrompodellids", "Discoba_X", "Euglenozoa", "Stramenopiles_X", "Colponemidia", "Foraminifera", "Hemimastigophora_X", "Nibbleridia_X"))
+# tax_tab<-as.data.frame(ps_V9_norm_sub@tax_table)
+# table(tax_tab$subdivision)
+#        # Alveolata_X           Cercozoa     Chrompodellids       Colponemidia          Discoba_X 
+#        #           1                416                 23                  1                  8 
+#        #  Euglenozoa       Foraminifera Hemimastigophora_X      Nibbleridia_X    Stramenopiles_X 
+#        #         284                 13                 11                  1                  1 
+# table(tax_tab$trophic_mode)
+# # 759 unknown trophic_mode and they are the five groups
+# 
+# # make sure we have all these unknowns in the actual subset dataframe
+# tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+# tax_fun <- as.matrix(tax_fun) # convert to matrix
+# ps_V9_norm_sub<-ps_V9_norm
+# tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+# rm(tax_fun)
+# ps_V9_norm_sub <- subset_taxa(ps_V9_norm_sub,
+#   (!trophic_mode %in% c("phototrophs", "phototrophs/mixotrophs", "mixotrophs") &
+#    !(subdivision == "Metazoa" & class != "Rotifera")) &
+#   !(trophic_mode == "unknown" & !subdivision %in% c("Alveolata_X", "Cercozoa", "Chrompodellids", "Discoba_X", "Euglenozoa", "Stramenopiles_X", "Colponemidia", "Foraminifera", "Hemimastigophora_X", "Nibbleridia_X")))
+# 
+# ps_V9_norm_sub <- subset_taxa(ps_V9_norm_sub,
+#   trophic_mode == "unknown" & subdivision %in% c("Alveolata_X", "Cercozoa", "Chrompodellids", "Discoba_X", "Euglenozoa", "Stramenopiles_X", "Colponemidia", "Foraminifera", "Hemimastigophora_X", "Nibbleridia_X"))
+# tax_tab<-as.data.frame(ps_V9_norm_sub@tax_table)
+# table(tax_tab$subdivision) # matches above
+# table(tax_tab$trophic_mode) # matches above
+
 ```
-- currrently not using unknown, but was before
+heterotrophic protists from unknown trophic mode that have mainly heterotrophic ESVs in the division or subdivision: Alveolata_X, Cercozoa, Chrompodellids, Discoba_X, Euglenozoa, Stramenopiles_X
+
+unknown trophic mode in division or subdivision but will go to heterotrophic protists: Colponemidia, Foraminifera, Hemimastigophora_X, Nibbleridia_X
+
+
 
 ```{r}
 # NMDS plot
@@ -2011,7 +2246,7 @@ write.csv(nmds_meta %>% select(sample_id, MDS1, MDS2, d15N_anomaly_mean_1800_185
 
 #### ii. select taxa
 ```{r}
-taxa_colors<-c( "#F0E442" ,"#0072B2" ,"#CC79A7" ,"#999999","#D55E00")
+taxa_colors<-c( "#F0E442" ,"#0072B2" ,"#CC79A7" ,"#999999","#D55E00","#009E73")
 
 
 # group by taxonomic rank and turn to relative abundance
@@ -2056,7 +2291,7 @@ lme_data <-sub %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>%
                mid_cm) %>%   
         arrange(lake_name,subdivision,desc(mid_cm)) %>% 
         group_by(lake_name) %>% mutate(time_seq=row_number()) %>% 
-        ungroup()
+        ungroup()%>% mutate(d15N_anomaly_mean_1800_1850=(d15N_anomaly_mean_1800_1850*(-1)))
 
 # split by fish and fishless lakes
 lme_data_fish <- lme_data %>% filter(lake_name %in% c("Louise", "Monogram","Black Rock","Footprint","Lost", "Bullfrog","Middle Gaylor"))
@@ -2099,13 +2334,14 @@ model_output<-model_output %>%
         mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
                                  p.value > 0.05 ~ "No")) %>% 
         mutate(term = case_when(term=="(Intercept)"~"Intercept",
-                                term=="mean_air_temp_degC_anomaly_combined"~"Mean annual air temperature\nanomaly (deg C)",
-                                term=="d15N_anomaly_mean_1800_1850"~"d15N",
-                                term=="fish_present_binary"~"Fish presence"))%>% 
+                                term=="mean_air_temp_degC_anomaly_combined"~"Air\ntemperature",
+                                term=="d15N_anomaly_mean_1800_1850"~"Nitrogen\ndeposition",
+                                term=="fish_present_binary"~"Fish"))%>% 
         filter(!term=="Intercept")
 
+
 #####
-model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)"))
+model_output$term <- factor(model_output$term, levels = c("Fish","Nitrogen\ndeposition","Air\ntemperature"))  
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish"))
 
@@ -2125,12 +2361,15 @@ LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = p
                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
-ggsave("3_Figures/FigX_V9_LME_heterotrophic_protists_no_interactions.png",height=5, width=10, units="in")
+# ggsave("3_Figures/FigX_V9_LME_heterotrophic_protists_no_interactions.png",height=5, width=10, units="in")
 #####
 
-write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_no_interactions.csv")
+write.csv(as.data.frame(model_output%>%         
+               mutate(term=case_when(term=="Nitrogen\ndeposition"~"Nitrogen deposition",
+                      term=="Air\ntemperature"~"Air temperature",
+                      term=="Fish"~"Fish"))), "2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_no_interactions.csv")
 
-#sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
 ```
 
 
@@ -2194,7 +2433,7 @@ model_output$term <- factor(model_output$term)
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish")) 
 
-LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
         geom_point(size = 4, shape = 21, stroke = 1.5) + 
         custom_theme()+ 
         facet_wrap(~fish)+
@@ -2209,10 +2448,13 @@ LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = p
         scale_y_discrete(labels = function(term) {
                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+ 
+ggsave("3_Figures/FigX_V9_LME_heterotrophic_protists_interactions.png",height=5, width=10, units="in")
+
 
 write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_interactions.csv")
 
-sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+#sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
 ```
 
 
@@ -2229,7 +2471,7 @@ RA<-ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivi
     strip = strip_themed(
       background_x = elem_list_rect(fill = lake_colors_2),
       text_x = elem_list_text(
-        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton","Soldier"), "white", "black")))) +
+        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton"), "white", "black")))) +
   labs(x = "Date (Common Era)", 
        y = "Relative abundance (proportion)", 
        color = "Taxonomic group", 
@@ -2277,7 +2519,7 @@ geom_vline(
 
 (RA|(NMDS/LME)) + plot_layout(widths = c(1.5, 1))
 
-ggsave("3_Figures/FigX_V9_heterotrophic_protist_NMDS_RelAbun_LME_nounknown.png",height=10, width=20, units="in")
+ggsave("3_Figures/FigX_V9_heterotrophic_protist_NMDS_RelAbun_LME.png",height=10, width=20, units="in")
 
 ```
 
@@ -2394,7 +2636,7 @@ lme_data <-sub %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>%
                mid_cm) %>%   
         arrange(lake_name,taxonomic_group,desc(mid_cm)) %>% 
         group_by(lake_name) %>% mutate(time_seq=row_number()) %>% 
-        ungroup()
+        ungroup()%>% mutate(d15N_anomaly_mean_1800_1850=(d15N_anomaly_mean_1800_1850*(-1)))
 
 # split by fish and fishless lakes
 lme_data_fish <- lme_data %>% filter(lake_name %in% c("Louise", "Monogram","Black Rock","Footprint","Lost", "Bullfrog","Middle Gaylor"))
@@ -2437,18 +2679,18 @@ model_output<-model_output %>%
         mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
                                  p.value > 0.05 ~ "No")) %>% 
         mutate(term = case_when(term=="(Intercept)"~"Intercept",
-                                term=="mean_air_temp_degC_anomaly_combined"~"Mean annual air temperature\nanomaly (deg C)",
-                                term=="d15N_anomaly_mean_1800_1850"~"d15N",
-                                term=="fish_present_binary"~"Fish presence"))%>% 
+                                term=="mean_air_temp_degC_anomaly_combined"~"Air\ntemperature",
+                                term=="d15N_anomaly_mean_1800_1850"~"Nitrogen\ndeposition",
+                                term=="fish_present_binary"~"Fish"))%>% 
         filter(!term=="Intercept")
 
 
 #####
-model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
+model_output$term <- factor(model_output$term, levels = c("Fish","Nitrogen\ndeposition","Air\ntemperature")) 
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish")) 
 
-LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
         geom_point(size = 4, shape = 21, stroke = 1.5) +
         custom_theme()+
         facet_wrap(~fish)+
@@ -2464,12 +2706,15 @@ LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = p
                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
-ggsave("3_Figures/FigX_V9_LME_zooplankton_no_interactions.png",height=5, width=10, units="in")
+#ggsave("3_Figures/FigX_V9_LME_zooplankton_no_interactions.png",height=5, width=10, units="in")
 #####
 
-write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_output_no_interactions.csv")
+write.csv(as.data.frame(model_output%>%         
+               mutate(term=case_when(term=="Nitrogen\ndeposition"~"Nitrogen deposition",
+                      term=="Air\ntemperature"~"Air temperature",
+                      term=="Fish"~"Fish"))), "2_DataAnalysis/V9_LME_zooplankton_model_output_no_interactions.csv")
 
-#sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
 ```
 
 
@@ -2533,7 +2778,7 @@ model_output$term <- factor(model_output$term)
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish")) 
 
-LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
         geom_point(size = 4, shape = 21, stroke = 1.5) + 
         custom_theme()+ 
         facet_wrap(~fish)+
@@ -2549,9 +2794,12 @@ LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = p
                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
+ggsave("3_Figures/FigX_V9_LME_zooplankton_interactions.png",height=5, width=10, units="in")
+
+
 write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_output_interactions.csv")
 
-sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+#sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
 ```
 
 
@@ -2569,7 +2817,7 @@ RA<-ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = taxonom
     strip = strip_themed(
       background_x = elem_list_rect(fill = lake_colors_2),
       text_x = elem_list_text(
-        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton","Soldier"), "white", "black")))) +
+        color = ifelse(names(lake_colors_2) %in% c("Lightning","Lost","Scott","Skelton"), "white", "black")))) +
   labs(x = "Date (Common Era)", 
        y = "Relative abundance (proportion)", 
        color = "Taxonomic group", 
@@ -2624,7 +2872,7 @@ Notes: one thing to change would be that we use subdivision for phytoplankton an
 
 
 
-# 9. Summary figures
+# 10. Summary figures
 
 ## a. NMDS
 ```{r}
@@ -2718,10 +2966,8 @@ sig_lme<-rbind(
         
 mutate(Value=abs(Value)) %>% # make absolute value
 group_by(trophic_level, term) %>% # group by trophic level and term (regardless of fish or fishless LMEs)
-summarize(mean_effect=mean(Value)) %>% ungroup() %>% # calculate the mean effect for each trophic level and stressor (term)
-mutate(term=case_when(term=="d15N"~"Nitrogen deposition",
-                      term=="Mean annual air temperature\nanomaly (deg C)"~"Air temperature",
-                      term=="Fish presence"~"Fish"))
+summarize(mean_effect=mean(Value)) %>% ungroup() # calculate the mean effect for each trophic level and stressor (term)
+
 
 # order trophic level and term
 sig_lme$trophic_level<-factor(sig_lme$trophic_level, levels=c("Phytoplankton", "Heterotrophic protists", "Zooplankton"))
@@ -2741,11 +2987,47 @@ ggplot(sig_lme, aes(x = factor(term), y = mean_effect)) +
 ggsave("3_Figures/FigX_LME_summary.png", height=5, width=7, units="in")
 ```
 
-
-## c. clustered relative abundances
-- maybe want to doublec check any changes other than taking out unknown for the heterotrophic protists and changing the heterotrophic protists threshold to 0.55 
+Fish and fishless rows 
 ```{r}
+sig_lme<-rbind(
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Phytoplankton"),
+        
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Heterotrophic protists"),
+        
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_zooplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Zooplankton")
+) %>% 
+        
+mutate(Value=abs(Value)) %>% # make absolute value
+group_by(trophic_level, term, fish) %>% # group by trophic level and term (regardless of fish or fishless LMEs)
+summarize(mean_effect=mean(Value)) %>% ungroup() # calculate the mean effect for each trophic level and stressor (term)
 
+
+# order trophic level, term, and fish
+sig_lme$trophic_level<-factor(sig_lme$trophic_level, levels=c("Phytoplankton", "Heterotrophic protists", "Zooplankton"))
+
+sig_lme$term<-factor(sig_lme$term, levels=c("Air temperature", "Nitrogen deposition","Fish"))
+
+sig_lme$fish<-factor(sig_lme$fish, levels=c("Fishless", "Fish"))
+
+ggplot(sig_lme, aes(x = factor(term), y = mean_effect)) +
+  geom_bar(stat = "identity") +
+  facet_grid2(fish~trophic_level,  strip = strip_themed(
+      background_x = elem_list_rect(fill = c("#009E73","#56B4E9","#D55E00")),
+      background_y = elem_list_rect(fill = "white"))) +
+  theme_minimal() +
+  labs(
+    x = "Anthropogenic stressor",
+    y = "Mean absolute effect of significant taxa") + custom_theme() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("3_Figures/FigX_LME_summary_fish.png", height=5, width=7, units="in")
+```
+
+
+
+
+## c. clustered relative abundances 
+```{r}
 ## PHYTOPLANKTON AND HETEROTROPHIC PROTISTS
 # read in the functional assignment file remove ~4k taxa that assign to fungi
 tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
@@ -2755,7 +3037,7 @@ tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the 
 rm(tax_fun)
 
 
-ps_V9_norm_phyto<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs"))
+ps_V9_norm_phyto<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs") | trophic_mode =="unknown" & subdivision%in%c("Cryptophyta_X", "Dinoflagellata", "Gyrista", "Haptophyta_X"))
 # group by taxonomic rank and turn to relative abundance
 sub <- ps_V9_norm_phyto %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
 
@@ -2773,7 +3055,10 @@ sub <- sub %>% mutate(subdivision= case_when(subdivision=="Chlorophyta_X" ~ "Chl
 
 all_trophic<-sub %>% mutate(taxonomic_group=subdivision, trophic_level="phytoplankton") %>% select(-subdivision)
 
-ps_V9_norm_hetero<-subset_taxa(ps_V9_norm_sub, !trophic_mode %in% c("phototrophs","phototrophs/mixotrophs","mixotrophs", "unknown")& !class %in% c("Arthropoda","Unassigned","Nematoda","Craniata","Tardigrada","Annelida","Gastrotricha","Platyhelminthes","Porifera","Mollusca","Metazoa_X","Cnidaria","Bryozoa")) 
+ps_V9_norm_hetero<- subset_taxa(ps_V9_norm_sub, 
+  (!trophic_mode %in% c("phototrophs", "phototrophs/mixotrophs", "mixotrophs") & 
+   !(subdivision == "Metazoa" & class != "Rotifera")) & 
+  !(trophic_mode == "unknown" & !subdivision %in% c("Alveolata_X", "Cercozoa", "Chrompodellids", "Discoba_X", "Euglenozoa", "Stramenopiles_X", "Colponemidia", "Foraminifera", "Hemimastigophora_X", "Nibbleridia_X")))
 
 # group by taxonomic rank and turn to relative abundance
 sub <- ps_V9_norm_hetero %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
@@ -2856,40 +3141,25 @@ all_trophic$state<-factor(all_trophic$state, levels=c("Washington","Wyoming","Ca
 
 # order the trophic levels so phytoplankton comes first
 tax_order<-unique(all_trophic$trophic_level_tax_group)
-tax_order<-tax_order[c(6,7,8,9,1,2,3,4,5,10,11,12,13,14,15,16,17)]
+tax_order<-tax_order[c(7,8,9,10,1,2,3,4,5,6,11,12,13,14,15,16,17,18)]
 all_trophic$trophic_level_tax_group<-factor(all_trophic$trophic_level_tax_group, levels=tax_order)
 rm(tax_order)
 
+# subset by taxa with significant LME results
 
+
+clust_tax<-rbind(
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Phytoplankton"),
+        
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Heterotrophic protists"),
+        
+        read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_zooplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Zooplankton")) %>% select(taxa) %>% distinct(.) %>% pull()
+        
+all_trophic <- all_trophic %>% filter(taxonomic_group %in% clust_tax)
 
 # remove extra objects
-rm(sub);rm(ps_V9_norm_hetero);rm(ps_V9_norm_phyto);rm(ps_V9_norm_sub); rm(ps_V9_norm_zoop)
+rm(sub);rm(ps_V9_norm_hetero);rm(ps_V9_norm_phyto);rm(ps_V9_norm_sub); rm(ps_V9_norm_zoop); rm(clust_tax)
 
-```
-
-plot abundances by lake name and by fish/fishless
-```{r}
-ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name))+
-        facet_wrap(~trophic_level_tax_group)+
-        geom_line() + 
-        custom_theme()+
-        labs(color="Lake",
-             y="Relative abundance (proportion)",
-             x="Date (Common Era)")+
-        scale_color_manual(values=lake_colors)
-
-ggsave("3_Figures/FigX_clustered_rel_abund_lake.png", height=10, width=20, units="in")
-
-ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name_fish))+
-        facet_wrap(~trophic_level_tax_group)+
-        geom_line() + 
-        custom_theme()+
-        labs(color="Lake",
-             y="Relative abundance (proportion)",
-             x="Date (Common Era)")+
-        scale_color_manual(values=lake_colors_fish)
-
-ggsave("3_Figures/FigX_clustered_rel_abund_lake_fish.png", height=10, width=20, units="in")
 
 ```
 
