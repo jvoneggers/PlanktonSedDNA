@@ -452,3 +452,1165 @@ names(tax_blast)[10]<-"scciname"
 ```
 
 
+
+
+
+
+OLD
+```{r}
+# select variables for modeling, add time sequence for each sediment core, switch the sign for nitrogen deposition
+lme_data <-sub %>% filter(is.na(d15N_diff_from_start)==F) %>%
+        select(Abundance,
+               mean_air_temp_degC_anomaly_combined,
+               d15N_diff_from_start,
+               fish_present_binary,
+               lake_name,
+               subdivision, 
+               mid_cm) %>%   
+        arrange(lake_name,subdivision,desc(mid_cm)) %>% 
+        group_by(lake_name) %>% mutate(time_seq=row_number()) %>% 
+        ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
+
+# no interactions
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output<-model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        mutate(term = case_when(term=="(Intercept)"~"Intercept",
+                                term=="mean_air_temp_degC_anomaly_combined"~"Mean annual air temperature\nanomaly (deg C)",
+                                term=="d15N_diff_from_start"~"d15N",
+                                term=="fish_present_binary"~"Fish presence"))%>% 
+        filter(!term=="Intercept")
+
+model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
+
+
+LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+  geom_point(size = 4, shape = 21, stroke = 1.5) + 
+  custom_theme()+         
+  scale_fill_manual(values = taxa_colors) + 
+  scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+  labs(x = "Estimate", 
+       y = "",
+       fill = "Taxonomic group",
+       color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+  scale_y_discrete(labels = function(term) {
+    ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_phytoplankton_model_output.csv")
+
+sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+
+```
+
+OLD - With interactions
+```{r}
+# interaction fish and nitrogen
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary + d15N_diff_from_start*fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# no interactions fish and nitrogen
+
+
+
+# interaction fish and climate
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# yes interactions fish and climate
+
+
+# interaction nitrogen and climate
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*d15N_diff_from_start,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# yes interactions nitrogen and climate
+
+
+#interaction of nitrogen*climate and fish*nitrogen
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*d15N_diff_from_start + fish_present_binary*d15N_diff_from_start,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# When I do this only fish and nitrogen are significant
+
+
+
+
+#  
+# model_output<-model_output %>%
+#         mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+#                                  p.value > 0.05 ~ "No")) %>% 
+#         mutate(term = case_when(term=="(Intercept)"~"Intercept",
+#                                 term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+#                                 term=="d15N_diff_from_start"~"d15N",
+#                                 term=="fish_present_binary"~"Fish presence",
+#                                 term=="d15N_diff_from_start:fish_present_binary"~"d15N x fish presence")) %>% filter(!term=="Intercept")
+# 
+# LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+#   geom_point(size = 4, shape = 21, stroke = 1.5) + 
+#   custom_theme()+         
+#   scale_fill_manual(values = taxa_colors) + 
+#   scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+#   labs(x = "Estimate", 
+#        y = "",
+#        fill = "Taxonomic group",
+#        color = expression(italic("P") <= 0.05)) +
+#         theme(strip.background = element_blank())+
+#         guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+#   scale_y_discrete(labels = function(term) {
+#     ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
+#         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+# 
+# 
+# write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_phytoplankton_model_output.csv")
+# 
+# sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+```
+
+
+
+
+PREVIOUS
+```{r}
+# select variables for modeling, add time sequence for each sediment core, switch the sign for nitrogen deposition
+lme_data <-sub %>% filter(is.na(d15N_diff_from_start)==F) %>%
+        select(Abundance,
+               mean_air_temp_degC_anomaly_combined,
+               d15N_diff_from_start,
+               fish_present_binary,
+               lake_name,
+               subdivision, 
+               mid_cm) %>%   
+        arrange(lake_name,subdivision,desc(mid_cm)) %>% 
+        group_by(lake_name) %>% mutate(time_seq=row_number()) %>% 
+        ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
+
+# no interactions
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output<-model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        mutate(term = case_when(term=="(Intercept)"~"Intercept",
+                                term=="mean_air_temp_degC_anomaly_combined"~"Mean annual air temperature\nanomaly (deg C)",
+                                term=="d15N_diff_from_start"~"d15N",
+                                term=="fish_present_binary"~"Fish presence"))%>% 
+        filter(!term=="Intercept")
+
+model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
+
+
+LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+  geom_point(size = 4, shape = 21, stroke = 1.5) + 
+  custom_theme()+         
+  scale_fill_manual(values = taxa_colors) + 
+  scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+  labs(x = "Estimate", 
+       y = "",
+       fill = "Taxonomic group",
+       color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+  scale_y_discrete(labels = function(term) {
+    ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_heterotrophic_protists_model_output.csv")
+
+sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+```
+
+
+
+No interactions
+```{r}
+# interaction fish and nitrogen
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary + d15N_diff_from_start*fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# no interactions fish and nitrogen
+
+
+
+# interaction fish and climate
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# no interactions fish and climate
+
+
+# interaction nitrogen and climate
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$subdivision)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*d15N_diff_from_start,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(subdivision == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# no interactions nitrogen and climate
+
+#  
+# model_output<-model_output %>%
+#         mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+#                                  p.value > 0.05 ~ "No")) %>% 
+#         mutate(term = case_when(term=="(Intercept)"~"Intercept",
+#                                 term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+#                                 term=="d15N_diff_from_start"~"d15N",
+#                                 term=="fish_present_binary"~"Fish presence",
+#                                 term=="d15N_diff_from_start:fish_present_binary"~"d15N x fish presence")) %>% filter(!term=="Intercept")
+# 
+# LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+#   geom_point(size = 4, shape = 21, stroke = 1.5) + 
+#   custom_theme()+         
+#   scale_fill_manual(values = taxa_colors) + 
+#   scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+#   labs(x = "Estimate", 
+#        y = "",
+#        fill = "Taxonomic group",
+#        color = expression(italic("P") <= 0.05)) +
+#         theme(strip.background = element_blank())+
+#         guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+#   scale_y_discrete(labels = function(term) {
+#     ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
+#         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+# 
+# 
+# write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_heterotrophic_protists_model_output.csv")
+# 
+# sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+```
+
+
+
+PREVIOUS
+
+```{r}
+# select variables for modeling, add time sequence for each sediment core, switch the sign for nitrogen deposition
+lme_data <-sub %>% filter(is.na(d15N_diff_from_start)==F) %>%
+        select(Abundance,
+               mean_air_temp_degC_anomaly_combined,
+               d15N_diff_from_start,
+               fish_present_binary,
+               lake_name,
+               taxonomic_group, 
+               mid_cm) %>%   
+        arrange(lake_name,taxonomic_group,desc(mid_cm)) %>% 
+        group_by(lake_name) %>% mutate(time_seq=row_number()) %>% 
+        ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
+
+# no interactions
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$taxonomic_group)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(taxonomic_group == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output<-model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        mutate(term = case_when(term=="(Intercept)"~"Intercept",
+                                term=="mean_air_temp_degC_anomaly_combined"~"Mean annual air temperature\nanomaly (deg C)",
+                                term=="d15N_diff_from_start"~"d15N",
+                                term=="fish_present_binary"~"Fish presence"))%>% 
+        filter(!term=="Intercept")
+
+model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
+
+
+LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+  geom_point(size = 4, shape = 21, stroke = 1.5) + 
+  custom_theme()+         
+  scale_fill_manual(values = taxa_colors) + 
+  scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+  labs(x = "Estimate", 
+       y = "",
+       fill = "Taxonomic group",
+       color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+  scale_y_discrete(labels = function(term) {
+    ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_output.csv")
+
+sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+```
+
+Interactions
+```{r}
+# interaction fish and nitrogen
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$taxonomic_group)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary + d15N_diff_from_start*fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(taxonomic_group == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# yes interactions fish and nitrogen
+
+
+
+# interaction fish and climate
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$taxonomic_group)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(taxonomic_group == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# no interactions fish and climate
+
+
+# interaction nitrogen and climate
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$taxonomic_group)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*d15N_diff_from_start,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(taxonomic_group == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# yes interactions nitrogen and climate
+
+#  
+# model_output<-model_output %>%
+#         mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+#                                  p.value > 0.05 ~ "No")) %>% 
+#         mutate(term = case_when(term=="(Intercept)"~"Intercept",
+#                                 term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+#                                 term=="d15N_diff_from_start"~"d15N",
+#                                 term=="fish_present_binary"~"Fish presence",
+#                                 term=="d15N_diff_from_start:fish_present_binary"~"d15N x fish presence")) %>% filter(!term=="Intercept")
+# 
+# LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+#   geom_point(size = 4, shape = 21, stroke = 1.5) + 
+#   custom_theme()+         
+#   scale_fill_manual(values = taxa_colors) + 
+#   scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+#   labs(x = "Estimate", 
+#        y = "",
+#        fill = "Taxonomic group",
+#        color = expression(italic("P") <= 0.05)) +
+#         theme(strip.background = element_blank())+
+#         guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+#   scale_y_discrete(labels = function(term) {
+#     ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
+#         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+# 
+# 
+# write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_output.csv")
+# 
+# sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+```
+
+
+PREVIOUS
+
+```{r}
+# select variables for modeling, add time sequence for each sediment core, switch the sign for nitrogen deposition
+lme_data <-sub %>% filter(is.na(d15N_diff_from_start)==F) %>%
+        select(Abundance,
+               mean_air_temp_degC_anomaly_combined,
+               d15N_diff_from_start,
+               fish_present_binary,
+               lake_name,
+               taxonomic_group, 
+               mid_cm) %>%   
+        arrange(lake_name,taxonomic_group,desc(mid_cm)) %>% 
+        group_by(lake_name) %>% mutate(time_seq=row_number()) %>% 
+        ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start)
+
+# no interactions
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$taxonomic_group)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(taxonomic_group == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output<-model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        mutate(term = case_when(term=="(Intercept)"~"Intercept",
+                                term=="mean_air_temp_degC_anomaly_combined"~"Mean annual air temperature\nanomaly (deg C)",
+                                term=="d15N_diff_from_start"~"d15N",
+                                term=="fish_present_binary"~"Fish presence"))%>% 
+        filter(!term=="Intercept")
+
+model_output$term <- factor(model_output$term, levels = c("Fish presence","d15N","Mean annual air temperature\nanomaly (deg C)")) 
+
+
+LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+  geom_point(size = 4, shape = 21, stroke = 1.5) + 
+  custom_theme()+         
+  scale_fill_manual(values = taxa_colors) + 
+  scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+  labs(x = "Estimate", 
+       y = "",
+       fill = "Taxonomic group",
+       color = expression(italic("P") <= 0.05)) +
+        theme(strip.background = element_blank())+
+        guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+  scale_y_discrete(labels = function(term) {
+    ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
+        geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+
+
+write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_output.csv")
+
+sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+```
+
+Interactions
+```{r}
+# interaction fish and nitrogen
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$taxonomic_group)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary + d15N_diff_from_start*fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(taxonomic_group == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# yes interactions fish and nitrogen
+
+
+
+# interaction fish and climate
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$taxonomic_group)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*fish_present_binary,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(taxonomic_group == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# no interactions fish and climate
+
+
+# interaction nitrogen and climate
+model_output<-as_tibble(NULL)
+for(i in unique(lme_data$taxonomic_group)){
+        model <- lme(
+                Abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary +mean_air_temp_degC_anomaly_combined*d15N_diff_from_start,
+                random = ~ 1 | lake_name,
+                correlation = corAR1(form = ~ time_seq),
+                data = lme_data %>% filter(taxonomic_group == i))
+# extract model estimates and put into a table for each iteration
+      model_summary <- summary(model)
+      model_table <- as_tibble(model_summary$tTable, rownames = "term") %>% setNames(make.names(names(.)))
+      model_table <- model_table %>% mutate(taxa = i)
+      model_output <- bind_rows(model_output, model_table) 
+      } ; rm(model); rm(i); rm(model_table)
+
+model_output %>%
+        mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+                                 p.value > 0.05 ~ "No")) %>% 
+        filter(pval0.5 =="Yes" &!term=="(Intercept)") %>% pull(term) %>% unique(.)
+# yes interactions nitrogen and climate
+
+#  
+# model_output<-model_output %>%
+#         mutate(pval0.5=case_when(p.value <= 0.05 ~ "Yes",
+#                                  p.value > 0.05 ~ "No")) %>% 
+#         mutate(term = case_when(term=="(Intercept)"~"Intercept",
+#                                 term=="mean_air_temp_degC_interval"~"Mean annual air\ntemperature (deg C)",
+#                                 term=="d15N_diff_from_start"~"d15N",
+#                                 term=="fish_present_binary"~"Fish presence",
+#                                 term=="d15N_diff_from_start:fish_present_binary"~"d15N x fish presence")) %>% filter(!term=="Intercept")
+# 
+# LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.5)) +
+#   geom_point(size = 4, shape = 21, stroke = 1.5) + 
+#   custom_theme()+         
+#   scale_fill_manual(values = taxa_colors) + 
+#   scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
+#   labs(x = "Estimate", 
+#        y = "",
+#        fill = "Taxonomic group",
+#        color = expression(italic("P") <= 0.05)) +
+#         theme(strip.background = element_blank())+
+#         guides(fill = guide_legend(override.aes = list(color = NA)))+ 
+#   scale_y_discrete(labels = function(term) {
+#     ifelse(term == "d15N", expression(Delta*delta^15 * "N"), term) }) +
+#         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
+# 
+# 
+# write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_output.csv")
+# 
+# sig_taxa<-model_output %>% filter(pval0.5=="Yes") %>% pull(taxa) %>% unique(.)
+```
+
+
+# 7. GLS
+
+```{r}
+## PHYTOPLANKTON AND HETEROTROPHIC PROTISTS
+# read in the functional assignment file remove ~4k taxa that assign to fungi
+tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
+tax_fun <- as.matrix(tax_fun) # convert to matrix
+ps_V9_norm_sub<-ps_V9_norm
+tax_table(ps_V9_norm_sub) <- tax_table(tax_fun) # replace taxonomy table in the phyloseq object
+rm(tax_fun)
+
+
+ps_V9_norm_phyto<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","phototrophs/mixotrophs","mixotrophs"))
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_phyto %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(subdivision%in%c(
+        sub %>% filter(Abundance > 0.35) %>% select(subdivision) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+# rename the groups so there isn't an _X
+sub <- sub %>% mutate(subdivision= case_when(subdivision=="Chlorophyta_X" ~ "Chlorophyta",
+                                             subdivision=="Streptophyta_X" ~ "Streptophyta",
+                                             TRUE~subdivision
+                                             ))
+
+
+all_trophic<-sub %>% mutate(taxonomic_group=subdivision, trophic_level="phytoplankton") %>% select(-subdivision)
+
+ps_V9_norm_hetero<-subset_taxa(ps_V9_norm_sub, !trophic_mode %in% c("phototrophs","phototrophs/mixotrophs","mixotrophs" )& !class %in% c("Arthropoda","Unassigned","Nematoda","Craniata","Tardigrada","Annelida","Gastrotricha","Platyhelminthes","Porifera","Mollusca","Metazoa_X","Cnidaria","Bryozoa")) 
+
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_hetero %>% tax_glom(.,taxrank="subdivision") %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(subdivision%in%c(
+        sub %>% filter(Abundance > 0.6) %>% select(subdivision) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+unique(sub$subdivision)
+
+# rename the groups so there isn't an _X
+sub <- sub %>% mutate(subdivision= case_when(subdivision=="Evosea_X" ~ "Evosea",
+                                             subdivision=="Metazoa" ~ "Rotifera",
+                                             TRUE~subdivision
+                                             ))
+
+all_trophic<-sub %>% mutate(taxonomic_group=subdivision, trophic_level="heterotrophic protists")%>% select(-subdivision) %>% rbind(all_trophic,.)
+
+# remove other taxonomic levels aside from taxonomic_group
+all_trophic <- all_trophic %>% select(-c(domain,supergroup,division))
+
+# ZOOPLANKTON
+# read in taxonomy assigned in Ch. 2
+tax_blast<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/ZooplanktonSedDNA/5_DataAnalysis/BLAST_zooplankton/Max_Bra/5_BLAST_V9_original_single_multiple_updated.csv", row.names=1,na.strings="") %>% column_to_rownames(., var="qseqid") %>% 
+   mutate(taxonomic_group = replace_na(taxonomic_group, "Unassigned")) %>% select(Kingdom,taxonomic_group)
+tax_blast <- as.matrix(tax_blast) # convert to matrix
+ps_V9_norm_sub<-ps_V9_norm
+tax_table(ps_V9_norm_sub) <- tax_table(tax_blast) # replace taxonomy table in the phyloseq object
+rm(tax_blast)
+
+# congomerate right away to taxonomic_group
+ps_V9_norm_zoop <- ps_V9_norm_sub %>% tax_glom(., taxrank = "taxonomic_group")
+
+
+# group by taxonomic rank and turn to relative abundance
+sub <- ps_V9_norm_zoop %>% transform_sample_counts(., function(x) x / sum(x)) %>% psmelt(.)
+
+# subset dataset by taxa with the highest abundance in each group
+sub <- sub %>% filter(taxonomic_group%in%c(
+        sub %>% filter(Abundance > 0.4) %>% select(taxonomic_group) %>% unique(.) %>% pull() # this is where you select the abundance
+        ))
+
+unique(sub$taxonomic_group)
+
+sub <- sub %>% select(-Kingdom)
+
+all_trophic<-sub  %>% mutate(trophic_level="zooplankton") %>% rbind(all_trophic,.)
+
+
+# switch the sign for nitrogen deposition
+gls_data <-all_trophic %>% filter(is.na(d15N_diff_from_start)==F) %>% select(Abundance,mean_air_temp_degC_anomaly_combined,d15N_diff_from_start,fish_present_binary,lake_name,taxonomic_group, mid_cm, fish, trophic_level) %>% arrange(trophic_level, taxonomic_group,lake_name,desc(mid_cm)) %>% group_by(lake_name, taxonomic_group) %>% mutate(time_seq=row_number()) %>% ungroup() %>% mutate(d15N_diff_from_start=-d15N_diff_from_start) %>% mutate(abundance=Abundance) %>% select(-Abundance)
+
+
+model_output <- as_tibble(NULL)
+
+for (l in unique(gls_data$lake_name)) {
+  for (i in unique(gls_data$taxonomic_group)) {
+    subset <- gls_data %>% filter(taxonomic_group == i & lake_name == l)
+    if (subset$fish[1] == 0) {
+      model <- try(gls(abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start,
+                       data = subset, correlation = corAR1(form = ~ time_seq)), silent = TRUE)
+    } else {
+      model <- try(gls(abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary,
+                       data = subset, correlation = corAR1(form = ~ time_seq)), silent = TRUE)
+    }
+
+    # if the model throws a singularity error (for series where the abundance is 0 the whole time), then put NAs
+    if (inherits(model, "try-error")) {
+      model_table <- tibble(
+        term = c("mean_air_temp_degC_interval", "d15N_diff_from_start", "fish_present_binary"),
+        Value = NA_real_,
+        Std.Error = NA_real_,
+        t.value = NA_real_,
+        taxonomic_group = i,
+        lake_name = l,
+        trophic_level = subset$trophic_level[1]
+      )
+    } else {
+      model_summary <- summary(model)
+      model_table <- as_tibble(coef(model_summary), rownames = "term")
+      model_table <- model_table %>%
+        mutate(taxonomic_group = i, lake_name = l, trophic_level = subset$trophic_level[1]) %>%
+        setNames(make.names(names(.))) %>%
+        filter(term != "(Intercept)")
+    }
+    model_output <- bind_rows(model_output, model_table)
+  }}; rm(model, i, l, model_table, model_summary)
+# relabel some names to lower case
+model_output<-model_output %>% mutate(estimate=Value, std.error=Std.Error) %>% select(-c(Value,Std.Error))
+
+# remove extra dataframes
+rm(subset,sub,ps_V9_norm_hetero,ps_V9_norm_phyto,ps_V9_norm_zoop,ps_V9_norm_sub,all_trophic)
+
+```
+
+#### by lake
+```{r}
+# Summarize mean effect for each term by taxonomic group and lake
+effect_summary_lake <- model_output %>% filter(p.value<0.06) %>%
+  group_by(trophic_level, lake_name, term) %>%
+  summarize(
+    max_abs_effect = max(abs(estimate), na.rm=T),
+    mean_abs_effect = mean(abs(estimate), na.rm=T),
+    .groups = 'drop') %>% 
+  arrange(trophic_level, lake_name, term) 
+        
+# make complete set of all combinations
+complete_rows <- expand.grid(
+  lake_name = names(lake_colors), # fishless lakes
+  trophic_level =c("phytoplankton", "heterotrophic protists", "zooplankton"),
+  term = c("mean_air_temp_degC_anomaly_combined", "d15N_diff_from_start", "fish_present_binary")
+)
+
+# left join to have all combinations for plotting (set NAs to 0)
+effect_summary_lake<-left_join(complete_rows, effect_summary_lake, join_by(lake_name,trophic_level,term)) %>% 
+        mutate(mean_abs_effect = if_else(is.na(mean_abs_effect), 0, mean_abs_effect),
+               max_abs_effect = if_else(is.na(max_abs_effect), 0, max_abs_effect))
+
+
+effect_summary_lake$trophic_level<-factor(effect_summary_lake$trophic_level, levels=c("phytoplankton","heterotrophic protists","zooplankton"))
+effect_summary_lake$lake_name<-factor(effect_summary_lake$lake_name, levels=names(lake_colors))
+
+p1<-ggplot(effect_summary_lake, aes(x = lake_name, y = max_abs_effect, fill = trophic_level)) +
+  geom_col(position = "dodge") +
+        facet_wrap2(~term, ncol=1, strip = strip_themed(background_x = elem_list_rect(fill = "white", color = NA)), labeller = labeller(term = c(
+      "mean_air_temp_degC_anomaly_combined" = "Mean air temperature (°C)",
+      "d15N_diff_from_start" = "Change in nitrogen isotopes",
+      "fish_present_binary" = "Fish presence")))+
+  labs(
+    x = "Lake",
+    y = "Max absolute effect",
+    fill = "Trophic level") +
+  scale_fill_manual(values=c("#009E73" ,"#56B4E9" ,"#D55E00")) + 
+ custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+p2<-ggplot(effect_summary_lake, aes(x = lake_name, y = mean_abs_effect, fill = trophic_level)) +
+  geom_col(position = "dodge") +
+        facet_wrap2(~term, ncol=1, strip = strip_themed(background_x = elem_list_rect(fill = "white", color = NA)), labeller = labeller(term = c(
+      "mean_air_temp_degC_anomaly_combined" = "Mean air temperature (°C)",
+      "d15N_diff_from_start" = "Change in nitrogen isotopes",
+      "fish_present_binary" = "Fish presence")))+
+  labs(
+    x = "Lake",
+    y = "Mean absolute effect",
+    fill = "Trophic level") +
+  scale_fill_manual(values=c("#009E73" ,"#56B4E9" ,"#D55E00")) + 
+ custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+#### by state
+```{r}
+# Summarize mean effect for each term by taxonomic group and lake
+effect_summary_state <- model_output %>% filter(p.value<0.06) %>%
+        mutate(state=case_when(lake_name %in% names(lake_colors)[1:7]~"Wyoming",
+                                          lake_name %in% names(lake_colors)[8:11]~"California",
+                                          lake_name %in% names(lake_colors)[12:14]~"Washington")) %>%
+  group_by(trophic_level, state, term) %>%
+  summarize(
+    max_abs_effect = max(abs(estimate), na.rm=T),
+    mean_abs_effect = mean(abs(estimate), na.rm=T),
+    .groups = 'drop') %>% 
+  arrange(trophic_level, state, term) 
+
+
+# make complete set of all combinations
+complete_rows <- expand.grid(
+  state=c("California","Washington","Wyoming"), 
+  trophic_level =c("phytoplankton", "heterotrophic protists", "zooplankton"),
+  term = c("mean_air_temp_degC_anomaly_combined", "d15N_diff_from_start", "fish_present_binary")
+)
+
+# left join to have all combinations for plotting (set NAs to 0)
+effect_summary_state<-left_join(complete_rows, effect_summary_state, join_by(state,trophic_level,term)) %>% 
+        mutate(mean_abs_effect = if_else(is.na(mean_abs_effect), 0, mean_abs_effect),
+               max_abs_effect = if_else(is.na(max_abs_effect), 0, max_abs_effect))
+
+        
+
+
+effect_summary_state$trophic_level<-factor(effect_summary_state$trophic_level, levels=c("phytoplankton","heterotrophic protists","zooplankton"))
+effect_summary_state$state<-factor(effect_summary_state$state, levels=c("California","Washington","Wyoming"))
+
+
+p3<-ggplot(effect_summary_state, aes(x = state, y = max_abs_effect, fill = trophic_level)) +
+  geom_col(position = "dodge") +
+        facet_wrap2(~term, ncol=1, strip = strip_themed(background_x = elem_list_rect(fill = "white", color = NA)), labeller = labeller(term = c(
+      "mean_air_temp_degC_anomaly_combined" = "Mean air temperature (°C)",
+      "d15N_diff_from_start" = "Change in nitrogen isotopes",
+      "fish_present_binary" = "Fish presence")))+
+  labs(
+    x = "State",
+    y = "Max absolute effect",
+    fill = "Trophic level") +
+  scale_fill_manual(values=c("#009E73" ,"#56B4E9" ,"#D55E00")) + 
+ custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+p4<-ggplot(effect_summary_state, aes(x = state, y = mean_abs_effect, fill = trophic_level)) +
+  geom_col(position = "dodge") +
+        facet_wrap2(~term, ncol=1, strip = strip_themed(background_x = elem_list_rect(fill = "white", color = NA)), labeller = labeller(term = c(
+      "mean_air_temp_degC_anomaly_combined" = "Mean air temperature (°C)",
+      "d15N_diff_from_start" = "Change in nitrogen isotopes",
+      "fish_present_binary" = "Fish presence")))+
+  labs(
+    x = "State",
+    y = "Mean absolute effect",
+    fill = "Trophic level") +
+  scale_fill_manual(values=c("#009E73" ,"#56B4E9" ,"#D55E00")) + 
+ custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+```
+
+
+#### total
+```{r}
+# Summarize mean effect for each term by taxonomic group and lake
+effect_summary_total<- model_output %>% filter(p.value<0.05) %>%
+  group_by(trophic_level, term) %>%
+  summarize(
+    max_abs_effect = max(abs(estimate), na.rm=T),
+    mean_abs_effect = mean(abs(estimate), na.rm=T),
+    .groups = 'drop'
+  ) %>% 
+  arrange(trophic_level, term) 
+  
+# make complete set of all combinations
+complete_rows <- expand.grid(
+  trophic_level =c("phytoplankton", "heterotrophic protists", "zooplankton"),
+  term = c("mean_air_temp_degC_anomaly_combined", "d15N_diff_from_start", "fish_present_binary")
+)
+
+# left join to have all combinations for plotting (set NAs to 0)
+effect_summary_total<-left_join(complete_rows, effect_summary_total, join_by(trophic_level,term)) %>%
+        mutate(mean_abs_effect = if_else(is.na(mean_abs_effect), 0, mean_abs_effect),
+               max_abs_effect = if_else(is.na(max_abs_effect), 0, max_abs_effect)) %>% mutate(total="Total")
+
+        
+      
+
+effect_summary_total$trophic_level<-factor(effect_summary_total$trophic_level, levels=c("phytoplankton","heterotrophic protists","zooplankton"))
+
+
+p5<-ggplot(effect_summary_total, aes(x=total,y = max_abs_effect, fill = trophic_level)) +
+  geom_col(position = "dodge") +
+        facet_wrap2(~term, ncol=1, strip = strip_themed(background_x = elem_list_rect(fill = "white", color = NA)), labeller = labeller(term = c(
+      "mean_air_temp_degC_anomaly_combined" = "Mean air temperature (°C)",
+      "d15N_diff_from_start" = "Change in nitrogen isotopes",
+      "fish_present_binary" = "Fish presence")))+
+  labs(
+    x="Total",
+    y = "Max absolute effect",
+    fill = "Trophic level") +
+  scale_fill_manual(values=c("#009E73" ,"#56B4E9" ,"#D55E00")) + 
+ custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+p6<-ggplot(effect_summary_total, aes(x=total, y = mean_abs_effect, fill = trophic_level)) +
+  geom_col(position = "dodge") +
+        facet_wrap2(~term, ncol=1, strip = strip_themed(background_x = elem_list_rect(fill = "white", color = NA)), labeller = labeller(term = c(
+      "mean_air_temp_degC_anomaly_combined" = "Mean air temperature (°C)",
+      "d15N_diff_from_start" = "Change in nitrogen isotopes",
+      "fish_present_binary" = "Fish presence")))+
+  labs(
+    x="Total",
+    y = "Mean absolute effect",
+    fill = "Trophic level") +
+  scale_fill_manual(values=c("#009E73" ,"#56B4E9" ,"#D55E00")) + 
+ custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+
+t1<-ggplot(effect_summary_total, aes(x = term, y = mean_abs_effect)) +
+  geom_col(position = "dodge") +
+        facet_wrap2(~trophic_level, ncol=1, strip = strip_themed(background_x = elem_list_rect(fill = "white", color = NA)), labeller = labeller(trophic_level = c(
+      "phytoplankton" = "Phytoplankton",
+      "heterotrophic protists" = "Heterotrophic protists",
+      "zooplankton" = "Zooplankton")))+
+  labs(
+    x = "",
+    y = "Mean absolute effect")+
+        scale_x_discrete(labels = c(
+    "mean_air_temp_degC_anomaly_combined" = "Temperature",
+    "d15N_diff_from_start" = "Nitrogen deposition",
+    "fish_present_binary" = "Fish presence"))+
+ custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank()) 
+
+t2<-ggplot(effect_summary_total, aes(x = term, y = max_abs_effect)) +
+  geom_col(position = "dodge") +
+        facet_wrap2(~trophic_level, ncol=1, strip = strip_themed(background_x = elem_list_rect(fill = "white", color = NA)), labeller = labeller(trophic_level = c(
+      "phytoplankton" = "Phytoplankton",
+      "heterotrophic protists" = "Heterotrophic protists",
+      "zooplankton" = "Zooplankton")))+
+  labs(
+    x = "",
+    y = "Max absolute effect")+
+        scale_x_discrete(labels = c(
+    "mean_air_temp_degC_anomaly_combined" = "Temperature",
+    "d15N_diff_from_start" = "Nitrogen deposition",
+    "fish_present_binary" = "Fish presence"))+
+ custom_theme() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank()) 
+
+
+```
+
+combined figure
+```{r}
+# (p1 | p3 | p5) + 
+#   plot_layout(guides = "collect", widths = c(3, 2, 1.75)) + 
+#   plot_annotation(tag_levels = 'A')
+# 
+# 
+# ggsave("3_Figures/FigX_gls_V9_max_lake_state_total.png", width =15, height = 5, dpi = 400)
+# 
+# (p2 | p4 | p6) + 
+#   plot_layout(guides = "collect", widths = c(3, 2, 1.75)) + 
+#   plot_annotation(tag_levels = 'A')
+# 
+# 
+# ggsave("3_Figures/FigX_gls_V9_mean_lake_state_total.png", width =15, height = 5, dpi = 400)
+
+
+
+t1
+
+ggsave("3_Figures/FigX_gls_V9_mean_trophic_level_total.png", width =4, height =7, dpi = 400)
+
+t2
+
+ggsave("3_Figures/FigX_gls_V9_max_trophic_level_total.png", width =4, height = 7, dpi = 400)
+```
+
+
+
+
+
+```{r}
+# subset just Chlorophytes in one lake
+test<-gls_data %>% filter(lake_name=="Footprint" & taxonomic_group=="Chlorophyta") 
+
+# plot all the variables together
+par(mfrow=c(4,1))
+plot(test$abundance, type="l",main="Chlorophyta - phytoplankton", ylab="Relative abundance")
+plot(test$mean_air_temp_degC_anomaly_combined, type="l", ylab="Air temperature anomaly\nfrom mid century mean (1951-1980)")
+plot(test$d15N_diff_from_start, type="l", ylab="-Dd15N")
+plot(test$fish_present_binary, pch=16, ylab="Fish presence")
+
+
+
+# run GLS
+
+model_output <- as_tibble(NULL)
+
+for (l in unique(test$lake_name)) {
+  for (i in unique(test$taxonomic_group)) {
+    subset <- test %>% filter(taxonomic_group == i & lake_name == l)
+    if (subset$fish[1] == 0) {
+      model <- try(gls(abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start,
+                       data = subset, correlation = corAR1(form = ~ time_seq)), silent = TRUE)
+    } else {
+      model <- try(gls(abundance ~ mean_air_temp_degC_anomaly_combined + d15N_diff_from_start + fish_present_binary,
+                       data = subset, correlation = corAR1(form = ~ time_seq)), silent = TRUE)
+    }
+
+    # if the model throws a singularity error (for series where the abundance is 0 the whole time), then put NAs
+    if (inherits(model, "try-error")) {
+      model_table <- tibble(
+        term = c("mean_air_temp_degC_interval", "d15N_diff_from_start", "fish_present_binary"),
+        Value = NA_real_,
+        Std.Error = NA_real_,
+        t.value = NA_real_,
+        taxonomic_group = i,
+        lake_name = l,
+        trophic_level = subset$trophic_level[1]
+      )
+    } else {
+      model_summary <- summary(model)
+      model_table <- as_tibble(coef(model_summary), rownames = "term")
+      model_table <- model_table %>%
+        mutate(taxonomic_group = i, lake_name = l, trophic_level = subset$trophic_level[1]) %>%
+        setNames(make.names(names(.))) %>%
+        filter(term != "(Intercept)")
+    }
+    model_output <- bind_rows(model_output, model_table)
+  }}; rm(model, i, l, model_table, model_summary)
+# relabel some names to lower case
+single_model_output<-model_output %>% mutate(estimate=Value, std.error=Std.Error) %>% select(-c(Value,Std.Error))
+
+
+# double checked this matched the output from the full GLS run 
+subset<-model_output %>%  filter(lake_name=="Footprint" & taxonomic_group=="Chlorophyta", trophic_level=="phytoplankton") 
+
+
+# look at simple linear regression
+summary(lm(sqrt(test$abundance)~test$d15N_diff_from_start)) 
+par(mfrow=c(1,1))
+plot(sqrt(test$abundance)~test$d15N_diff_from_start, pch=16)
+abline(lm(test$abundance~test$d15N_diff_from_start))
+
+
+
+# look at a multiple linear regression of the abundances and the three predictors
+summary(lm(test$abundance~test$d15N_diff_from_start+test$mean_air_temp_degC_anomaly_combined+test$fish_present_binary))
+
+# look at their correlations
+cor(test$abundance,test$d15N_diff_from_start)
+cor(test$abundance,test$mean_air_temp_degC_anomaly_combined)
+cor(test$abundance,test$fish_present_binary)
+
+# try time series analysis
+require(TSA)
+require(lmtest)
+attach(test)
+y<-ts(abundance, start = 1, end=length(abundance), frequency=1)
+x_climate<-ts(mean_air_temp_degC_anomaly_combined, start=1, end=length(mean_air_temp_degC_anomaly_combined),frequency=1)
+x_nitro<-ts(d15N_diff_from_start, start=1, end=length(d15N_diff_from_start),frequency=1)
+x_fish<-ts(fish_present_binary, start=1, end=length(fish_present_binary),frequency=1)
+
+grangertest(y~x_climate, order=5) # granger test of y on x
+grangertest(y~x_nitro, order=5) # granger test of x on y 
+grangertest(y~x_fish, order=5) # granger test of x on y 
+
+prewhiten(x_climate,y, main="prewhitened") # prewhitened series - doesn't work because single points
+prewhiten(x_nitro,y, main="prewhitened") # prewhitened series
+detach()
+
+```
+
+
+
+
+For manuscript: 
+- need to mention could be feedbacks between community and d15N values, check granger causality?
+
+
+
