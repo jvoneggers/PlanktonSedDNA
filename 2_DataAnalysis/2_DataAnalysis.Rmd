@@ -98,8 +98,8 @@ lake_colors_RA <- c(
 
 
 
-
 source("1_LoadData/1_CreatePhyloseq_ZOTUexact_TAX80.R")
+rm(ps_V7_norm) # only working with 18S V9 data - remove 18S V7
 ```
 
 
@@ -153,14 +153,6 @@ iso<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWy
 table(iso$sample_id%in%metadata$sample_id) # all T
 metadata<-left_join(metadata,iso, join_by(sample_id)); rm(iso)
 
-        # calculate difference from starting value for d15N data
-d15N_start_summary<-metadata %>% group_by(lake_name) %>%
-        filter(is.na(d15N)==F) %>%
-        summarize(d15N_start = d15N[which.max(bottom_cm)]) %>% ungroup()
-
-        # add back in to metadata
-metadata <- left_join(metadata,d15N_start_summary, join_by(lake_name)) %>%
-        mutate(d15N_diff_from_start=d15N-d15N_start); rm(d15N_start_summary)
 
 # LOI data
 loi<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/Subsampling and LOI/MASTER_loss_on_ignition_2015_2019-2021_cores.csv") %>% filter(mountain_lake_code%in%c("SNOW20_LOST20_1A_1G", "SNOW20_SCOT20_1A_1G","WIND20_BLRO20_1A_1G", "WIND20_CANY20_1A_1G" ,"WIND20_EYRI20_1A_1G", "WIND20_FOOT20_1A_1G","WIND20_LIGH20_1A_1G", "MORA21_CRES21_1A_1G", "MORA21_LOUI21_1A_1G",
@@ -182,7 +174,7 @@ metadata<-metadata %>% filter(!lake_name %in% c("Green Park Lake","Solitude", "D
 # - Only 659 of these samples had DNA run on them (SOLD21_22.5 was not sequenced)
 
 ###############################################
-# 2. Model 210Pb dating and add more metadata #
+# 2. Model 210Pb dating                       #
 ###############################################
 
 # Here I am:
@@ -338,9 +330,12 @@ pb <- pb %>%
                                            date_type=="interpolated" ~ interpolated_date_mid_AD + interpolated_error_of_age_sd))
 pb <- as.data.frame(pb)
 
-############################################################################## 
-### Here adding extra variables after the chronology has been incorporated ###
-############################################################################## 
+#########################################################################
+# 3. Adding extra variables after the chronology has been incorporated  #
+#########################################################################
+
+
+
 
 # Add whether fish are present for each sample based on the 210Pb results
 pb <- pb %>%
@@ -458,6 +453,28 @@ pb <-left_join(pb,
         , join_by(lake_name)) %>% 
 mutate(d15N_anomaly_mean_1800_1850 = d15N_CNS_adj - mean_d15N_1800_1850)
 
+# calculate the difference from starting value for d15N using the CNS adjusted value
+d15N_start_summary <- pb %>% group_by(lake_name) %>%
+        filter(is.na(d15N_CNS_adj)==F) %>%
+        summarize(d15N_CNS_adj_start = d15N_CNS_adj[which.max(bottom_cm)]) %>% ungroup()
+
+# add back in to metadata
+pb <- left_join(pb,d15N_start_summary, join_by(lake_name)) %>%
+        mutate(d15N_CNS_adj_diff_from_start=d15N_CNS_adj-d15N_CNS_adj_start); rm(d15N_start_summary)
+
+
+# calculate the difference from starting value for d15N WITHOUT the CNS adjusted value
+d15N_start_summary <- pb %>% group_by(lake_name) %>%
+        filter(is.na(d15N)==F) %>%
+        summarize(d15N_start = d15N[which.max(bottom_cm)]) %>% ungroup()
+
+# add back in to metadata
+pb <- left_join(pb,d15N_start_summary, join_by(lake_name)) %>%
+        mutate(d15N_diff_from_start=d15N-d15N_start); rm(d15N_start_summary)
+
+
+
+
 # change lake_name to include the state
 pb <- pb %>% mutate(state_short=case_when(state=="Wyoming"~"WY", 
                                             state=="California"~"CA",
@@ -513,7 +530,7 @@ mutate(d15N_anomaly_mean_1800_1850 = d15N_CNS_adj - mean_d15N_1800_1850)
 
 # 2. Manuscript values
 
-Starting reads V9
+## - DNA reads 
 ```{r}
 esv_table<-read.delim("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/ZooplanktonSedDNA/1_RawSeqProcessing/output/V9_ZOTU_table_exact", header = TRUE, stringsAsFactors = FALSE, quote = "", sep = "\t")
 
@@ -577,6 +594,282 @@ nrow(otu_table(ps_V9_norm))
 
 # 5971420 - number of total reads after normalizing 
 # 12838 - number of ESVs
+```
+
+## - 210Pb dating
+1. calculate bottom ages constrained by 210 Pb dating 
+2. extrapolated ages
+3. calculate accumulation rates for constrained dates
+```{r}
+# function to convert date to decimal year
+decimal_year <- function(date) {
+  year <- year(date)
+  start_of_year <- ymd(paste0(year, "-01-01"))
+  days_in_year <- ifelse(leap_year(date), 366, 365) # Account for leap years
+  fractional_year <- as.numeric(difftime(date, start_of_year, units = "days")) / days_in_year
+  year + fractional_year 
+} 
+
+# bottom ages constrained by 210Pb dating, error for those dates and accumulation rates
+summary<-metadata %>% filter(!date_type=="extrapolated") %>%
+  group_by(lake_name) %>%
+  filter(bottom_cm == max(bottom_cm)) %>%
+  ungroup() %>%  mutate(decimal_year=decimal_year(dmy(date_cored))) %>% 
+        select(bottom_measured_date_mid_AD, bottom_cm, lake_name, decimal_year, error_of_age_sd) %>% 
+        mutate(years_measured_210Pb=decimal_year - bottom_measured_date_mid_AD,
+               accum_rate=bottom_cm/years_measured_210Pb) %>% arrange(bottom_measured_date_mid_AD)
+
+rm(decimal_year)
+print(summary)
+
+#    bottom_measured_date_…¹ bottom_cm lake_name decimal_year error_of_age_sd years_measured_210Pb accum_rate
+#                      <dbl>     <dbl> <chr>            <dbl>           <dbl>                <dbl>      <dbl>
+#  1                   1814.      18.5 Middle G…        2022.            28.1                 208.     0.0890
+#  2                   1824.      11.5 Scott            2021.            21.3                 196.     0.0586
+#  3                   1835.      14   Crescent         2022.            19.6                 187.     0.0749
+#  4                   1836.      13.5 Monogram         2022.            38.7                 185.     0.0728
+#  5                   1839.       8   Canyon           2021.            19.2                 182.     0.0440
+#  6                   1846.       9   Footprint        2021.            24.2                 174.     0.0517
+#  7                   1849.      19.5 Bullfrog         2022.            35.9                 172.     0.113 
+#  8                   1855.      20   Lost             2021.            18.3                 166.     0.121 
+#  9                   1869.      15   Louise           2022.            36.3                 152.     0.0984
+# 10                   1873.      10.5 Black Ro…        2021.            14.6                 147.     0.0712
+# 11                   1884.       6   Skelton          2022.            26.4                 137.     0.0437
+# 12                   1887.      12   Eyrie            2021.            75.8                 133.     0.0901
+# 13                   1887.       5   Lightning        2021.            16.1                 133.     0.0376
+# 14                   1920.      14   Soldier          2022.            32.8                 101.     0.138 
+
+
+# what is the range of oldest ages from 210Pb dating 
+round(range(summary$bottom_measured_date_mid_AD),digits=1)
+#1] 1813.8 1920.4
+#[1] 1813 (middle gaylor) 1920 (soldier)
+
+# what about soldier... ya that is right..
+metadata %>% filter(lake_name=="Soldier") %>% select(bottom_cm, date_mid_AD)
+
+# average of oldest ages
+round(mean(summary$bottom_measured_date_mid_AD), digits=1)
+round(mean(summary$error_of_age_sd), digits=1)
+hist(summary$bottom_measured_date_mid_AD, breaks=10)
+
+# what is the range of accumulation rates
+round(range(summary$accum_rate), digits=3)
+
+# average accumulation rate
+round(mean(summary$accum_rate), digits=3)
+
+# bottom extrapolated ages and errors 
+summary<-metadata %>% filter(date_type=="extrapolated") %>%
+  group_by(lake_name) %>%
+  filter(bottom_cm == max(bottom_cm)) %>%
+  ungroup() %>%  mutate(decimal_year=decimal_year(dmy(date_cored))) %>% 
+        select(date_mid_AD_combo,date_mid_AD_min_combo, date_mid_AD_max_combo, lake_name) %>% arrange(date_mid_AD_combo)
+
+print(summary)
+
+#    date_mid_AD_combo date_mid_AD_min_combo date_mid_AD_max_combo lake_name    
+#                <dbl>                 <dbl>                 <dbl> <chr>        
+#  1             1273.                 -975.                 1560. Monogram     
+#  2             1322.                 1033.                 1478. Footprint    
+#  3             1372.                  817.                 1570. Skelton      
+#  4             1388.                 1067.                 1535. Canyon       
+#  5             1568.                 1445.                 1647. Lightning    
+#  6             1614.                 1413.                 1702. Middle Gaylor
+#  7             1644.                 1482.                 1723. Lost         
+#  8             1688.                 1584.                 1746. Scott        
+#  9             1690.                 1340.                 1793. Louise       
+# 10             1708.                 1625.                 1760. Black Rock   
+# 11             1712.                 1411.                 1883. Eyrie        
+# 12             1760.                 1681.                 1815. Bullfrog     
+# 13             1772.                 1733.                 1803. Crescent     
+# 14             1822.                 1650.                 1891. Soldier 
+
+floor(range(summary$date_mid_AD_combo))
+#[1] 1273 1822
+
+mean(summary$date_mid_AD_combo)
+#  1595.228
+```
+
+## - temperature
+```{r}
+# add in temperature breakpoints - when do most lakes start to have increasing air temperatures
+temp_break<-read.csv("2_DataAnalysis/temperature_anomaly_breakpoints.csv", header=T,row.names=1)
+round(mean(temp_break$temperature_breakpoint_date),digits=1)
+round(sd(temp_break$temperature_breakpoint_date),digits=1)
+hist(temp_break$temperature_breakpoint_date, breaks=10)
+
+# what is the average and range in magnitude of the temperature change?
+# what is the average increase in temperature
+metadata %>% select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo) %>% group_by(lake_name) %>% summarize(max_temp_increase=max(mean_air_temp_degC_anomaly_combined)) %>% pull(max_temp_increase) %>% mean(.) %>% round(.,digits=2)
+# sd on avg. increase in temp
+metadata %>% select(mean_air_temp_degC_anomaly_combined, lake_name) %>% group_by(lake_name) %>% summarize(max_temp_increase=max(mean_air_temp_degC_anomaly_combined)) %>% pull(max_temp_increase) %>% sd(.) %>% round(.,digits=2)
+# when did this average increase occur?
+metadata %>%
+  select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo) %>%
+  group_by(lake_name) %>%
+  slice_max(mean_air_temp_degC_anomaly_combined, n = 1, with_ties = FALSE) %>% pull(date_mid_AD_combo) %>% mean(.) %>% round(.,digits=1)
+# sd on when increase occurred
+metadata %>%
+  select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo) %>%
+  group_by(lake_name) %>%
+  slice_max(mean_air_temp_degC_anomaly_combined, n = 1, with_ties = FALSE) %>% pull(date_mid_AD_combo) %>% sd(.) %>% round(.,digits=1)
+
+# How much does WA increase in temperature? 
+metadata %>%
+  select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_max(mean_air_temp_degC_anomaly_combined, n = 1, with_ties = FALSE) %>% filter(state=="Washington") %>% pull(mean_air_temp_degC_anomaly_combined) %>% mean(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_max(mean_air_temp_degC_anomaly_combined, n = 1, with_ties = FALSE) %>% filter(state=="Washington") %>% pull(mean_air_temp_degC_anomaly_combined) %>% sd(.) %>% round(.,digits=2)
+
+
+
+# How much does WY increase in temperature? 
+metadata %>%
+  select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_max(mean_air_temp_degC_anomaly_combined, n = 1, with_ties = FALSE) %>% filter(state=="Wyoming") %>% pull(mean_air_temp_degC_anomaly_combined) %>% mean(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_max(mean_air_temp_degC_anomaly_combined, n = 1, with_ties = FALSE) %>% filter(state=="Wyoming") %>% pull(mean_air_temp_degC_anomaly_combined) %>% sd(.) %>% round(.,digits=2)
+
+
+# How much does CA increase in temperature? 
+metadata %>%
+  select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_max(mean_air_temp_degC_anomaly_combined, n = 1, with_ties = FALSE) %>% filter(state=="California") %>% pull(mean_air_temp_degC_anomaly_combined) %>% mean(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(mean_air_temp_degC_anomaly_combined, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_max(mean_air_temp_degC_anomaly_combined, n = 1, with_ties = FALSE) %>% filter(state=="California") %>% pull(mean_air_temp_degC_anomaly_combined) %>% sd(.) %>% round(.,digits=2)
+
+
+
+# when does WA, CA, and WY start to increase?  - didn't use this
+# temp_break %>% filter(lake_name%in%c("Crescent", "Louise"," Monogram")) %>% pull(temperature_breakpoint_date) %>% mean(.)
+# temp_break %>% filter(lake_name%in%c("Crescent", "Louise"," Monogram")) %>% pull(temperature_breakpoint_date) %>% sd(.)
+# 
+# temp_break %>% filter(lake_name%in%c("Soldier", "Skelton","Middle Gaylor","Bullfrog")) %>% pull(temperature_breakpoint_date) %>% mean(.)
+# temp_break %>% filter(lake_name%in%c("Soldier", "Skelton","Middle Gaylor","Bullfrog")) %>% pull(temperature_breakpoint_date) %>% sd(.)
+# 
+# temp_break %>% filter(lake_name%in%c("Eyrie","Lightning","Canyon","Black Rock","Scott","Footprint","Lost")) %>% pull(temperature_breakpoint_date) %>% mean(.)
+# temp_break %>% filter(lake_name%in%c("Eyrie","Lightning","Canyon","Black Rock","Scott","Footprint","Lost")) %>% pull(temperature_breakpoint_date) %>% sd(.)
+```
+
+## - nitrogen isotope values
+```{r}
+# when do most lakes start increasing in N deposition
+n_break<-read.csv("2_DataAnalysis/d15N_breakpoints.csv", header=T,row.names=1)
+round(mean(n_break$d15N_breakpoint_date),digits=1)
+round(sd(n_break$d15N_breakpoint_date),digits=1)
+hist(n_break$d15N_breakpoint_date, breaks=10)
+
+# what is the range in magnitude of the n dep change?
+
+# when does WA, CA, and WY start to increase? 
+n_break %>% filter(lake_name%in%c("Crescent", "Louise"," Monogram")) %>% pull(d15N_breakpoint_date) %>% mean(.)%>% round(.,digits=1)
+n_break %>% filter(lake_name%in%c("Crescent", "Louise"," Monogram")) %>% pull(d15N_breakpoint_date) %>% sd(.)%>% round(.,digits=1)
+
+n_break %>% filter(lake_name%in%c("Soldier", "Skelton","Middle Gaylor","Bullfrog")) %>% pull(d15N_breakpoint_date) %>% mean(.)%>% round(.,digits=1)
+n_break %>% filter(lake_name%in%c("Soldier", "Skelton","Middle Gaylor","Bullfrog")) %>% pull(d15N_breakpoint_date) %>% sd(.)%>% round(.,digits=1)
+
+n_break %>% filter(lake_name%in%c("Eyrie","Lightning","Canyon","Black Rock","Scott","Footprint","Lost")) %>% pull(d15N_breakpoint_date) %>% mean(.) %>% round(.,digits=1)
+n_break %>% filter(lake_name%in%c("Eyrie","Lightning","Canyon","Black Rock","Scott","Footprint","Lost")) %>% pull(d15N_breakpoint_date) %>% sd(.) %>% round(.,digits=1)
+
+
+
+# How much does N isotopic values decline from anomaly in WA and when? 
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="Washington") %>% pull(d15N_anomaly_mean_1800_1850) %>% mean(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="Washington") %>% pull(d15N_anomaly_mean_1800_1850) %>% sd(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="Washington") %>% pull(date_mid_AD_combo) %>% mean(.) %>% round(.,digits=1)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="Washington") %>% pull(date_mid_AD_combo) %>% sd(.) %>% round(.,digits=1)
+
+
+# How much does N isotopic values decline from anomaly in WY? 
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="Wyoming") %>% pull(d15N_anomaly_mean_1800_1850) %>% mean(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="Wyoming") %>% pull(d15N_anomaly_mean_1800_1850) %>% sd(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="Wyoming") %>% pull(date_mid_AD_combo) %>% mean(.) %>% round(.,digits=1)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="Wyoming") %>% pull(date_mid_AD_combo) %>% sd(.) %>% round(.,digits=1)
+
+
+# How much does N isotopic values decline from anomaly in CA? 
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="California") %>% pull(d15N_anomaly_mean_1800_1850) %>% mean(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="California") %>% pull(d15N_anomaly_mean_1800_1850) %>% sd(.) %>% round(.,digits=2)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="California") %>% pull(date_mid_AD_combo) %>% mean(.) %>% round(.,digits=1)
+
+metadata %>%
+  select(d15N_anomaly_mean_1800_1850, lake_name, date_mid_AD_combo, state) %>%
+  group_by(lake_name) %>%
+  slice_min(d15N_anomaly_mean_1800_1850, n = 1, with_ties = FALSE) %>% filter(state=="California") %>% pull(date_mid_AD_combo) %>% sd(.) %>% round(.,digits=1)
+
+
+# Modern NADP values
+# mean values for each state
+read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/2025-02-04_NADP_mean_N_deposition.csv", header=T, row.names=1) %>% group_by(state) %>%
+        summarize(mean_n_deposition_state=mean(mean_n_dep_kgperha))
+#  state mean_n_deposition_state
+# 1 CA                       5.50
+# 2 WA                       3.32
+# 3 WY                       4.43
+
+read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/2025-02-04_NADP_mean_N_deposition.csv", header=T, row.names=1) %>% group_by(state) %>%
+        summarize(sd_n_deposition_state=sd(mean_n_dep_kgperha))
+
+#   state sd_n_deposition_state
+# 1 CA                   1.06  
+# 2 WA                   0.124 
+# 3 WY                   0.0310
+
 ```
 
 
@@ -942,10 +1235,10 @@ mean_n_dep<-lagos_atm %>% filter(variable_name=="totaldepnitrogen_kgperha") %>% 
 
 mean_n_dep<-left_join(cores_lagos,mean_n_dep, join_by(hu12_zoneid)) %>% mutate(state=lake_centroidstate) %>% select(-lake_centroidstate)
 
-
+write.csv(mean_n_dep,paste0("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/",Sys.Date(),"_NADP_mean_N_deposition.csv"))
 
 # read in metadata, calculate max difference in nitrogen deposition, and merge with mean nitrogen deposition data
-ndep_niso<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2025-01-16_sample_data_dates.csv")  
+ndep_niso<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2025-02-03_sample_data_dates.csv")  
 
 ndep_niso<-ndep_niso%>% group_by(lake_name) %>% 
         summarize(max_d15N_change=max(abs(d15N_diff_from_start), na.rm=T)) %>% inner_join(.,mean_n_dep, join_by(lake_name))
@@ -2891,6 +3184,8 @@ Notes: one thing to change would be that we use subdivision for phytoplankton an
 
 ## a. NMDS
 ```{r}
+library(ggpubr) # for stat_cor()
+
 # combine all three of the NMDS data frames
 nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_phyto.csv", header=T, row.names = 1) %>% 
                    select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>% 
@@ -2931,7 +3226,6 @@ temp<-ggplot(nmds_comb, aes(x=mean_air_temp_degC_anomaly_combined,y=NMDS, color=
                strip.text.y = element_blank())
 
 
-
 nit<-ggplot(nmds_comb, aes(x=d15N_anomaly_mean_1800_1850,y=NMDS, color=lake_name))+
         facet_grid(trophic_level~state)+
         geom_point()+ 
@@ -2965,9 +3259,63 @@ fish <- ggplot(nmds_comb, aes(x = factor(fish_present_binary_YN), y = NMDS, colo
 
 
 ggsave("3_Figures/FigX_NMDS_state_stressor_trophiclevel.png", height=6, width=16, units="in")
-
-
 ```
+
+### written by chatGPT, just to have a look
+```{r}
+library(broom)
+
+# Perform regression for each combination of trophic_level and state
+lm_results <- nmds_comb %>%
+  group_by(trophic_level, state, lake_name) %>%  # Group by facets and lakes
+  do(tidy(lm(NMDS ~ mean_air_temp_degC_anomaly_combined, data = .))) %>% 
+  filter(term == "mean_air_temp_degC_anomaly_combined") %>%  # Keep only slope term
+  left_join(
+    nmds_comb %>%
+      group_by(trophic_level, state, lake_name) %>%
+      do(glance(lm(NMDS ~ mean_air_temp_degC_anomaly_combined, data = .))) %>%
+      select(trophic_level, state, lake_name, r.squared, p.value), 
+    by = c("trophic_level", "state", "lake_name")
+  )
+
+ggplot(lm_results %>% filter(p.value.x<0.05), aes(x = estimate, y = lake_name, color = trophic_level)) +
+  geom_point(aes(size=r.squared)) +  # Plot slopes as points
+  geom_errorbarh(aes(xmin = estimate - std.error, xmax = estimate + std.error), height = 0.2) +  # Confidence intervals
+  facet_wrap(~ state, scales = "free_y") +  # Separate by state
+  labs(x = "Slope of NMDS vs. Temperature Anomaly", y = "Lake", color = "Trophic Level",
+       title = "Summary of Linear Regression Results") +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = "white"),
+        strip.text = element_text(face = "bold"))
+
+
+
+# Perform regression for each combination of trophic_level and state
+lm_results <- nmds_comb %>%
+  group_by(trophic_level, state, lake_name) %>%  # Group by facets and lakes
+  do(tidy(lm(NMDS ~ d15N_anomaly_mean_1800_1850, data = .))) %>% 
+  filter(term == "d15N_anomaly_mean_1800_1850") %>%  # Keep only slope term
+  left_join(
+    nmds_comb %>%
+      group_by(trophic_level, state, lake_name) %>%
+      do(glance(lm(NMDS ~ d15N_anomaly_mean_1800_1850, data = .))) %>%
+      select(trophic_level, state, lake_name, r.squared, p.value), 
+    by = c("trophic_level", "state", "lake_name")
+  )
+
+ggplot(lm_results %>% filter(p.value.x<0.05), aes(x = estimate, y = lake_name, color = trophic_level)) +
+  geom_point(aes(size=r.squared)) +  # Plot slopes as points
+  geom_errorbarh(aes(xmin = estimate - std.error, xmax = estimate + std.error), height = 0.2) +  # Confidence intervals
+  facet_wrap(~ state, scales = "free_y") +  # Separate by state
+  labs(x = "Slope of NMDS vs. Nitrogen Deposition", y = "Lake", color = "Trophic Level",
+       title = "Summary of Linear Regression Results") +
+  theme_minimal() +
+  theme(strip.background = element_rect(fill = "white"),
+        strip.text = element_text(face = "bold"))
+```
+
+
+
 
 ## b. LME models
 ```{r}
@@ -3191,8 +3539,12 @@ avg_lake_50yrs<-all_trophic %>%
                                        seq(1449, 2049, by = 50), sep = "-")))%>%
        group_by(trophic_level_tax_group, date_window_50yrs) %>% 
         summarize(avg_abund=mean(abundance),
-                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-")))))
-        
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) 
+
+# the code above doesn't include prior to 1400
+
+
+all_trophic %>% filter(trophic_level_tax_group=="Phytoplankton - Chlorophyta" & date_mid_AD_combo <1400) %>% pull(abundance) %>% mean(.)
 
 ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name))+
         facet_wrap(~trophic_level_tax_group)+
@@ -3276,8 +3628,8 @@ summary_effects<-rbind(
         read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_heterotrophic_protists_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Heterotrophic protists"),
         
         read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_zooplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.5=="Yes") %>% mutate(trophic_level="Zooplankton")) %>% 
-        # select taxa that have an effect greater than 0.3
-        filter(Value > 0.04 | Value < (-0.04)) %>% group_by(taxa) %>%
+        # select taxa that have an effect greater than 0.4
+        filter(Value > 0.04 | Value < (-0.04)) # %>% group_by(taxa) %>%
   slice_max(order_by = abs(Value), n = 1, with_ties = FALSE)
 
 
