@@ -1,4 +1,4 @@
-"","term","Value","Std.Error","DF","t.value","p.value","taxa","fish","pval0.5"
+"","term","Value","Std.Error","DF","t.value","p.value","taxa","fish","pval0.05"
 "1","Air temperature",-0.0943379603829761,0.0366985194653616,217,-2.5706203344802,0.0108207070843117,"Chlorophyta","Fishless","Yes"
 "2","Nitrogen deposition",-0.0657805982605766,0.0244240334452739,217,-2.69327334520603,0.00762821029008531,"Chlorophyta","Fishless","Yes"
 "3","Air temperature X

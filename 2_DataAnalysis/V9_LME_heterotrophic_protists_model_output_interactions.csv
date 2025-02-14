@@ -1,4 +1,4 @@
-"","term","Value","Std.Error","DF","t.value","p.value","taxa","fish","pval0.5"
+"","term","Value","Std.Error","DF","t.value","p.value","taxa","fish","pval0.05"
 "1","Air temperature",-0.0132795804564821,0.0243519716536863,217,-0.545318491879562,0.58609455161173,"Cercozoa","Fishless","No"
 "2","Nitrogen deposition",0.0146970721464708,0.0164820588600444,217,0.891701229274172,0.373540771539788,"Cercozoa","Fishless","No"
 "3","Air temperature X

@@ -1,4 +1,4 @@
-"","term","Value","Std.Error","DF","t.value","p.value","taxa","fish","pval0.5"
+"","term","Value","Std.Error","DF","t.value","p.value","taxa","fish","pval0.05"
 "1","Air temperature",0.000105182876598999,0.000146036395475228,217,0.720251114502758,0.472145497500157,"Bosmina","Fishless","No"
 "2","Nitrogen deposition",-2.44296596226639e-05,7.05093645473535e-05,217,-0.346473972350966,0.729322265288951,"Bosmina","Fishless","No"
 "3","Air temperature X
