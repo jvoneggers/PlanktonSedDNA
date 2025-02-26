@@ -20,6 +20,7 @@ library(nlme) # linear mixed effects models
 library(sf) # for map
 library(raster) # for map
 library(elevatr) # for elevation for map
+library(car) # for qq plot with 95% envelope
 library(tidyverse) # load last to avoid conflicts
 ```
 
@@ -2062,6 +2063,7 @@ ps_V9_norm_sub<-subset_taxa(ps_V9_norm_sub, trophic_mode %in%c("phototrophs","ph
 ```{r}
 # NMDS plot
 set.seed(613)
+
 nmds <- ps_V9_norm_sub %>% ordinate(., method = "NMDS", distance="bray")
 
 nmds_points <- as.data.frame(nmds$points)
@@ -2084,7 +2086,7 @@ nmds_meta$scaled_depth<-(nmds_meta$scaled_depth+2.519536)
 nmds_meta <- nmds_meta %>% mutate(fish_present_binary_YN=case_when(fish_present_binary==0~"No",
                                                                     fish_present_binary==1~"Yes"))
 
-NMDS<-ggplot(data = nmds_meta, aes(x = MDS2, y = MDS1, size = scaled_depth, fill = lake_name, color = fish_present_binary_YN)) +
+NMDS_L1<-ggplot(data = nmds_meta, aes(x = MDS2, y = MDS1, size = scaled_depth, fill = lake_name, color = fish_present_binary_YN)) +
         geom_point(shape = 21, stroke = 1.2) + 
         custom_theme()+ 
         scale_fill_manual(values = lake_colors_3, name = "Lake") +  
@@ -2227,7 +2229,7 @@ model_output$term <- factor(model_output$term, levels = c("Fish","Nitrogen\ndepo
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish"))
 
-LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.05)) +
+LME_L1<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.05)) +
         geom_point(size = 4, shape = 21, stroke = 1.5) +
         custom_theme()+
         facet_wrap(~fish)+
@@ -2237,7 +2239,7 @@ LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = p
              y = "",
              fill = "Taxonomic group",
              color = expression(italic("P") <= 0.05)) +
-        theme(strip.background = element_blank())+
+        theme(strip.background = element_blank(),)+
         guides(fill = guide_legend(override.aes = list(color = NA)))+
         scale_y_discrete(labels = function(term) {
                 ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
@@ -2344,7 +2346,7 @@ sub <- sub %>%
   mutate(line_thickness = factor(ifelse(subdivision %in% sig_taxa, "Significant", "Non-significant")))
 
 
-RA<-ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivision)) +
+ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivision)) +
   facet_wrap2(
     ~ lake_name_state, ncol = 2, strip.position = "top",
     strip = strip_themed(
@@ -2389,16 +2391,17 @@ geom_vline(
   )+ 
   scale_linewidth_manual(values = c("Non-significant" = 0.5, "Significant" = 1.3))
 
- 
+ggsave("3_Figures/FigX_L1_phytoplankton_relative_abundances.png",height=10, width=12, units="in")
+
 ```
 
 
 #### v. plot all together
 ```{r}
-
-(RA|(NMDS/LME)) + plot_layout(widths = c(1.5, 1))
-
-ggsave("3_Figures/FigX_V9_compiled_L1_phytoplankton_NMDS_RelAbun_LME.png",height=10, width=20, units="in")
+# 
+# (RA|(NMDS/LME)) + plot_layout(widths = c(1.5, 1))
+# 
+# ggsave("3_Figures/FigX_V9_compiled_L1_phytoplankton_NMDS_RelAbun_LME.png",height=10, width=20, units="in")
 
 ```
 
@@ -2406,7 +2409,6 @@ ggsave("3_Figures/FigX_V9_compiled_L1_phytoplankton_NMDS_RelAbun_LME.png",height
 
 
 ## b. level 2 - heterotrophic protists
-#### i. NMDS
 ```{r}
 # read in the functional assignment file remove ~4k taxa that assign to fungi
 tax_fun<-read.csv("2_DataAnalysis/V9_Taxonomy_Function.csv", header=T, row.names=1) %>% column_to_rownames(.,var="asv_code") %>%  mutate(trophic_mode = replace_na(trophic_mode, "unknown")) %>% filter(!subdivision=="Fungi")
@@ -2483,7 +2485,7 @@ heterotrophic protists from unknown trophic mode that have mainly heterotrophic 
 unknown trophic mode in division or subdivision but will go to heterotrophic protists: Colponemidia, Foraminifera, Hemimastigophora_X, Nibbleridia_X
 
 
-
+#### i. NMDS
 ```{r}
 # NMDS plot
 set.seed(613)
@@ -2509,7 +2511,7 @@ nmds_meta$scaled_depth<-(nmds_meta$scaled_depth+2.519536)
 nmds_meta <- nmds_meta %>% mutate(fish_present_binary_YN=case_when(fish_present_binary==0~"No",
                                                                     fish_present_binary==1~"Yes"))
 
-NMDS<-ggplot(data = nmds_meta, aes(x = MDS2, y = MDS1, size = scaled_depth, fill = lake_name, color = fish_present_binary_YN)) +
+NMDS_L2<-ggplot(data = nmds_meta, aes(x = MDS2, y = MDS1, size = scaled_depth, fill = lake_name, color = fish_present_binary_YN)) +
         geom_point(shape = 21, stroke = 1.2) + 
         custom_theme()+ 
         scale_fill_manual(values = lake_colors_3, name = "Lake") +  
@@ -2638,7 +2640,7 @@ model_output$term <- factor(model_output$term, levels = c("Fish","Nitrogen\ndepo
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish"))
 
-LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.05)) +
+LME_L2<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.05)) +
         geom_point(size = 4, shape = 21, stroke = 1.5) +
         custom_theme()+
         facet_wrap(~fish)+
@@ -2648,10 +2650,9 @@ LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = p
              y = "",
              fill = "Taxonomic group",
              color = expression(italic("P") <= 0.05)) +
-        theme(strip.background = element_blank())+
+        theme(strip.background = element_blank(),
+               axis.text.y = element_blank())+
         guides(fill = guide_legend(override.aes = list(color = NA)))+
-        scale_y_discrete(labels = function(term) {
-                ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
 # ggsave("3_Figures/FigX_V9_LME_heterotrophic_protists_no_interactions.png",height=5, width=10, units="in")
@@ -2757,7 +2758,7 @@ write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_heterotrophic_prot
 sub <- sub %>%
   mutate(line_thickness = factor(ifelse(subdivision %in% sig_taxa, "Significant", "Non-significant")))
 
-RA<-ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivision)) +
+ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = subdivision)) +
   facet_wrap2(
     ~ lake_name_state, ncol = 2, strip.position = "top",
     strip = strip_themed(
@@ -2802,16 +2803,18 @@ geom_vline(
   )+
   scale_linewidth_manual(values = c("Non-significant" = 0.5, "Significant" = 1.3))
 
+ggsave("3_Figures/FigX_L2_heterotrophic_protists_relative_abundances.png",height=10, width=12, units="in")
+
  
 ```
 
 
 #### v. plot all together
 ```{r}
-
-(RA|(NMDS/LME)) + plot_layout(widths = c(1.5, 1))
-
-ggsave("3_Figures/FigX_V9_compiled_L2_heterotrophic_protist_NMDS_RelAbun_LME.png",height=10, width=20, units="in")
+# 
+# (RA|(NMDS/LME)) + plot_layout(widths = c(1.5, 1))
+# 
+# ggsave("3_Figures/FigX_V9_compiled_L2_heterotrophic_protist_NMDS_RelAbun_LME.png",height=10, width=20, units="in")
 
 ```
 
@@ -2855,22 +2858,23 @@ nmds_meta$scaled_depth<-(nmds_meta$scaled_depth+2.519536)
 nmds_meta <- nmds_meta %>% mutate(fish_present_binary_YN=case_when(fish_present_binary==0~"No",
                                                                     fish_present_binary==1~"Yes"))
 
-NMDS<-ggplot(data = nmds_meta, aes(x = MDS2, y = MDS1, size = scaled_depth, fill = lake_name, color = fish_present_binary_YN)) +
+NMDS_L3<-ggplot(data = nmds_meta, aes(x = MDS1, y = MDS2, size = scaled_depth, fill = lake_name, color = fish_present_binary_YN)) +
         geom_point(shape = 21, stroke = 1.2) + 
         custom_theme()+ 
         scale_fill_manual(values = lake_colors_3, name = "Lake") +  
         scale_color_manual(values = c(No="#00000000",Yes = "black")) + 
-        labs(x = "NMDS2", y = "NMDS1",
+        labs(x = "NMDS1", y = "NMDS2",
              fill = "Lake",
              color = "Fish present") +
         scale_size_continuous(name = "Scaled Depth", range = c(1, 5), guide = "none") + 
         guides(fill = guide_legend(override.aes = list(color = NA, size=4)))+
         custom_theme() + 
+        scale_x_reverse()+
   theme(legend.position = "right",
         panel.grid.major = element_blank(), 
         panel.grid.minor = element_blank()) +
   guides(color = "none")  +
-  annotate("text", x = min(nmds_meta$MDS2), y = max(nmds_meta$MDS1),
+  annotate("text", x = min(nmds_meta$MDS1), y = max(nmds_meta$MDS2),
                    hjust=1,vjust=1,size = 5,
            label = paste("Stress =", round(nmds$stress, 3))) 
 
@@ -2984,7 +2988,7 @@ model_output$term <- factor(model_output$term, levels = c("Fish","Nitrogen\ndepo
 
 model_output$fish <- factor(model_output$fish, levels = c("Fishless","Fish"))
 
-LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.05)) +
+LME_L3<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = pval0.05)) +
         geom_point(size = 4, shape = 21, stroke = 1.5) +
         custom_theme()+
         facet_wrap(~fish)+
@@ -2994,10 +2998,9 @@ LME<-ggplot(data = model_output, aes(x = Value, y = term, fill = taxa, color = p
              y = "",
              fill = "Taxonomic group",
              color = expression(italic("P") <= 0.05)) +
-        theme(strip.background = element_blank())+
+        theme(strip.background = element_blank(),
+               axis.text.y = element_blank())+
         guides(fill = guide_legend(override.aes = list(color = NA)))+
-        scale_y_discrete(labels = function(term) {
-                ifelse(term == "d15N", expression("-" * Delta*delta^15 * "N (nitrogen deposition)"), term) }) +
         geom_vline(aes(xintercept=0),color="black", linetype = "dashed",linewidth=0.75)
 
 #ggsave("3_Figures/FigX_V9_LME_zooplankton_no_interactions.png",height=5, width=10, units="in")
@@ -3104,7 +3107,7 @@ write.csv(as.data.frame(model_output), "2_DataAnalysis/V9_LME_zooplankton_model_
 sub <- sub %>%
   mutate(line_thickness = factor(ifelse(taxonomic_group %in% sig_taxa, "Significant", "Non-significant")))
 
-RA<-ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = taxonomic_group)) +
+ggplot(data = sub, aes(x = date_mid_AD_combo, y = Abundance, color = taxonomic_group)) +
   facet_wrap2(
     ~ lake_name_state, ncol = 2, strip.position = "top",
     strip = strip_themed(
@@ -3149,19 +3152,40 @@ geom_vline(
   )+
   scale_linewidth_manual(values = c("Non-significant" = 0.5, "Significant" = 1.3))
 
+ggsave("3_Figures/FigX_L3_zooplankton_relative_abundances.png",height=10, width=12, units="in")
 
 ```
 
 
-#### v. plot all together
+ #### v. plot all together
 ```{r}
 
-(RA|(NMDS/LME)) + plot_layout(widths = c(1.5, 1))
-
-ggsave("3_Figures/FigX_V9_compiled_L3_zooplankton_NMDS_RelAbun_LME.png",height=10, width=20, units="in")
+# (RA|(NMDS/LME)) + plot_layout(widths = c(1.5, 1))
+# 
+# ggsave("3_Figures/FigX_V9_compiled_L3_zooplankton_NMDS_RelAbun_LME.png",height=10, width=20, units="in")
 
 ```
 Notes: one thing to change would be that we use subdivision for phytoplankton and heterotrophic protists and then taxonomic_group for zooplankton
+
+
+ ## d. NMDS and LME
+```{r}
+ALL_NMDS<-(NMDS_L1 + NMDS_L2 + NMDS_L3)+ plot_layout(guides = "collect") & 
+  theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 5)))  
+
+ALL_LME<-(LME_L1+LME_L2+LME_L3) + 
+  theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 5)))  
+
+ALL_NMDS/ALL_LME
+
+ 
+ggsave("3_Figures/FigX_all_NMDS_all_LME.png",height=11, width=21, units="in")
+
+stop()
+
+```
 
 
 
@@ -3181,7 +3205,7 @@ nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-U
            read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_hetero_prot.csv", header=T, row.names = 1) %>% 
                    select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
                    rename(NMDS=MDS2) %>% 
-                   mutate(trophic_level="Heterotrophic\nprotists"),
+                   mutate(trophic_level="Heterotrophic\nprotists & rotifers"),
 
  
            read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_zoop.csv", header=T, row.names = 1) %>% 
@@ -3195,7 +3219,7 @@ nmds_comb <- left_join(nmds_comb, metadata %>% select(sample_id, lake_name, stat
 
 nmds_comb$lake_name <- factor(nmds_comb$lake_name, levels = names(lake_colors))
 nmds_comb$state <- factor(nmds_comb$state, levels = c("Washington", "Wyoming","California"))
-nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplankton", "Heterotrophic\nprotists", "Zooplankton"))
+nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplankton", "Heterotrophic\nprotists & rotifers", "Zooplankton"))
 
 
 ####################
@@ -3206,7 +3230,7 @@ nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplan
 model_stats <- nmds_comb %>%
   group_by(trophic_level, state) %>%
   summarise(
-    lm_fit = list(lm(NMDS ~ mean_air_temp_degC_anomaly_combined, data = cur_data())),
+    lm_fit = list(lm(NMDS ~ mean_air_temp_degC_anomaly_combined, data = pick(everything()))),
     .groups = "drop"
   ) %>%
   mutate(
@@ -3254,7 +3278,7 @@ temp <- temp + geom_text(data = model_stats, aes(x = x_pos, y = y_pos, label = l
 model_stats <- nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>% 
   group_by(trophic_level, state) %>%
   summarise(
-    lm_fit = list(lm(NMDS ~ d15N_anomaly_mean_1800_1850, data = cur_data())),
+    lm_fit = list(lm(NMDS ~ d15N_anomaly_mean_1800_1850, data = pick(everything()))),
     .groups = "drop"
   ) %>%
   mutate(
@@ -3305,7 +3329,7 @@ nit <- nit + geom_text(data = model_stats, aes(x = x_pos, y = y_pos, label = lab
 t_test_results <- nmds_comb %>%
   group_by(trophic_level, state) %>%
   summarise(
-    t_test = list(t.test(NMDS ~ fish_present_binary_YN, data = cur_data())),
+    t_test = list(t.test(NMDS ~ fish_present_binary_YN, data = pick(everything()))),
     .groups = "drop"
   ) %>%
   mutate(
@@ -3352,8 +3376,545 @@ ggsave("3_Figures/SFigX_NMDS_state_stressor_trophiclevel.png", height=6, width=1
 
 
 
+with linear models and t-tests but running through a residuals check (manual)
+```{r}
+# combine all three of the NMDS data frames
+nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_phyto.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>% 
+                   rename(NMDS=MDS2) %>% 
+                   mutate(trophic_level="Phytoplankton"),
 
-### ii. max NMDS and stressor max
+ 
+           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_hetero_prot.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
+                   rename(NMDS=MDS2) %>% 
+                   mutate(trophic_level="Heterotrophic\nprotists & rotifers"),
+
+ 
+           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_zoop.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS1, d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
+                   rename(NMDS=MDS1) %>% 
+                   mutate(trophic_level="Zooplankton")
+           )
+
+# add in lake name and state
+nmds_comb <- left_join(nmds_comb, metadata %>% select(sample_id, lake_name, state), join_by(sample_id)) 
+
+nmds_comb$lake_name <- factor(nmds_comb$lake_name, levels = names(lake_colors))
+nmds_comb$state <- factor(nmds_comb$state, levels = c("Washington", "Wyoming","California"))
+nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplankton", "Heterotrophic\nprotists & rotifers", "Zooplankton"))
+
+
+####################
+### TEMPERATURE ####
+####################
+
+# run linear models, grab r-sq and p-value, only plot pval < 0.05
+model_stats <- nmds_comb %>%
+  group_by(trophic_level, state) %>%
+  summarise(
+    lm_fit = list(lm(NMDS ~ mean_air_temp_degC_anomaly_combined, data = pick(everything()))),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    p_value = sapply(lm_fit, function(m) summary(m)$coefficients[2, 4]), # p-val
+    r_squared = sapply(lm_fit, function(m) summary(m)$r.squared),
+    residuals = lapply(lm_fit, residuals), # grab residuals
+    shapiro_p = sapply(residuals, function(res) shapiro.test(res)$p.value), # test for normality
+    bp_p = sapply(lm_fit, function(m) bptest(m)$p.value) # test for heteroscedasticity
+  ) %>%
+  filter(p_value < 0.05) %>% 
+  mutate(
+    label = paste0("R² = ", signif(r_squared, 3)),
+    x_pos = max(nmds_comb$mean_air_temp_degC_anomaly_combined, na.rm = TRUE)*0.5, 
+    y_pos = 1.2 
+  )
+
+
+# look at residuals and qqplot of standardized residuals
+par(mfrow=c(1,2))
+i=1
+for(i in 1:nrow(model_stats)){
+        model<-model_stats$lm_fit[i]
+        residuals <- model[[1]]$residuals
+        fitted_vals <- model[[1]]$fitted.values
+        st_res<- (residuals - mean(residuals) / sd(residuals))
+        plot(fitted_vals, residuals, main=paste(model_stats$trophic_level[i],model_stats$state[i], sep=" - "))
+        abline(h=0, col="red") 
+        abline(h=sqrt(3), col="red", lty=2) 
+        qqPlot(st_res, main=paste(model_stats$trophic_level[i],model_stats$state[i], sep=" - "))
+}
+
+rm(st_res); rm(i); rm(model); rm(residuals); rm(fitted_vals)
+
+# thresholds for removal:
+# more than 5 points outside of qqplto 95% envelope
+# residuals verses fitted look non-normal with a trend
+
+# Remove:
+# Phytoplankton - Washington
+# Phytoplankton - California (maybe) - 5 points for qq and one outlier, and a funnel shape
+# Hetero - WA - tons outside qq plot
+# heter - WY - dittto
+# hetero - CA - ditto
+# Zooplankton - CA - 7 points outside of qq plot 
+
+# keep
+# zooplankton - WY
+# phyto - ca 
+# Phyto - WY
+
+
+model_stats <- model_stats %>% filter(trophic_level=="Zooplankton" & state=="Wyoming" | 
+                                      trophic_level=="Phytoplankton" & state=="Wyoming" |
+                                      trophic_level=="Phytoplankton" & state=="California")
+
+
+# make separate dataframe of only significant models to plot the lines
+significant_models <- nmds_comb %>%
+  inner_join(model_stats, by = c("trophic_level", "state"))
+
+# plot
+temp <- ggplot(nmds_comb, aes(x = mean_air_temp_degC_anomaly_combined, 
+                              y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +
+  geom_point() +
+  scale_color_manual(values = lake_colors) +
+  custom_theme() + 
+  scale_y_reverse() +
+  labs(x = "Average annual air temperature anomaly\nfrom 1951-1980 mean (deg C)",
+       color = "Lake") + 
+  theme(strip.background = element_rect(fill = "white"),
+        strip.text.y = element_blank())
+
+# plot regression lines when significant
+if (nrow(significant_models) > 0) {
+  temp <- temp + geom_smooth(data = significant_models, 
+                             method = "lm", color = "black", se = FALSE)
+}
+
+# add in r-squared to plot
+temp <- temp + geom_text(data = model_stats, aes(x = x_pos, y = y_pos, label = label),
+                         color = "black", size = 4, inherit.aes = FALSE)
+
+#################
+### NITROGEN ####
+#################
+# run linear models, grab r-sq and p-value, only plot pval < 0.05
+model_stats <- nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>% 
+  group_by(trophic_level, state) %>%
+  summarise(
+    lm_fit = list(lm(NMDS ~ d15N_anomaly_mean_1800_1850, data = pick(everything()))),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    p_value = sapply(lm_fit, function(m) summary(m)$coefficients[2, 4]), # grab p-val
+    r_squared = sapply(lm_fit, function(m) summary(m)$r.squared), # grab r-sq
+    residuals = lapply(lm_fit, residuals), # grab residuals
+    shapiro_p = sapply(residuals, function(res) shapiro.test(res)$p.value), # test for normality
+    bp_p = sapply(lm_fit, function(m) bptest(m)$p.value) # test for heteroscedasticity
+  ) %>%
+  filter(p_value < 0.05) %>% 
+  mutate(
+    label = paste0("R² = ", signif(r_squared, 3)),
+    x_pos = min(nmds_comb$d15N_anomaly_mean_1800_1850, na.rm = TRUE)*0.6,  
+    y_pos = 1.2 
+  )
+
+
+
+# look at residuals and qqplot of standardized residuals
+par(mfrow=c(1,2))
+i=1
+for(i in 1:nrow(model_stats)){
+        model<-model_stats$lm_fit[i]
+        residuals <- model[[1]]$residuals
+        fitted_vals <- model[[1]]$fitted.values
+        st_res<- (residuals - mean(residuals) / sd(residuals))
+        plot(fitted_vals, residuals, main=paste(model_stats$trophic_level[i],model_stats$state[i], sep=" - "))
+        abline(h=0, col="red") 
+        abline(h=sqrt(3), col="red", lty=2) 
+        qqPlot(st_res, main=paste(model_stats$trophic_level[i],model_stats$state[i], sep=" - "))
+}
+
+rm(st_res); rm(i); rm(model); rm(residuals); rm(fitted_vals)
+
+# thresholds for removal:
+# more than 5 points outside of qqplto 95% envelope
+# residuals verses fitted look non-normal with a trend
+
+# keep
+# Phyto - WA
+# phyto - WY
+# phyto - CA
+# hetero - WY 
+
+model_stats <- model_stats %>% filter(trophic_level=="Phytoplankton" | trophic_level=="Heterotrophic\nprotists & rotifers" & state=="Wyoming")
+
+
+
+# make separate dataframe of only signficant models to plot the lines
+significant_models <- nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>%
+  inner_join(model_stats, by = c("trophic_level", "state"))
+
+nit <- ggplot(nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F), 
+              aes(x = d15N_anomaly_mean_1800_1850, y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +
+  geom_point() +
+  scale_color_manual(values = lake_colors) +
+  custom_theme() + 
+  scale_y_reverse() +
+  scale_x_reverse() + 
+  labs(x=expression(delta^15 * "N anomaly from 1800-1850 mean"),
+       color = "Lake") + 
+        theme(strip.background = element_rect(fill = "white"),
+               axis.title.y = element_blank(),
+              axis.text.y = element_blank(),
+               strip.text.y = element_blank())
+
+
+# plot regression lines when significant
+if (nrow(significant_models) > 0) {
+  nit <- nit + geom_smooth(data = significant_models, 
+                             method = "lm", color = "black", se = FALSE)
+}
+
+# add in r-squared to plot
+nit <- nit + geom_text(data = model_stats, aes(x = x_pos, y = y_pos, label = label),
+                         color = "black", size = 4, inherit.aes = FALSE)
+
+#################
+###### FISH #####
+#################
+# t-test for fish and fishless lakes, extracting p-value and t-tvalue to put on plot
+t_test_results <- nmds_comb %>%
+  group_by(trophic_level, state) %>%
+  summarise(
+    t_test = list(t.test(NMDS ~ fish_present_binary_YN, data = pick(everything()))),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    p_value = sapply(t_test, function(x) x$p.value),  
+    t_value = sapply(t_test, function(x) x$statistic),  # t-value
+    sig_label = ifelse(p_value < 0.05, "*", ""),  
+    y_sig = min(nmds_comb$NMDS, na.rm = TRUE) + 0.5,  #
+    y_tval = 1.2,  
+    t_label = paste0("t = ", round(t_value, 2)) 
+  ) %>% filter(p_value < 0.05) 
+
+
+# plot 
+fish <- ggplot(nmds_comb, aes(x = factor(fish_present_binary_YN), 
+                              y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +
+  geom_point(position = position_jitter(width = 0.2)) + 
+  geom_boxplot(aes(group = fish_present_binary_YN), color = "black", alpha = 0) +
+  scale_color_manual(values = lake_colors) +
+  custom_theme() + 
+  scale_y_reverse() +
+  labs(x = "Fish present", color = "Lake") +
+  theme(strip.background = element_rect(fill = "white"),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank())
+
+# add a star for signficant t-tests
+fish <- fish + geom_text(data = t_test_results, aes(x = 1.5, y = y_sig, label = sig_label), 
+                         color = "black", size = 8, fontface = "bold", inherit.aes = FALSE)
+
+# add the t-value
+fish <- fish + geom_text(data = t_test_results, aes(x = 1.5, y = y_tval, label = t_label), 
+                         color = "black", size = 4, inherit.aes = FALSE)
+
+
+(temp + nit + fish) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 5)))  
+
+
+ggsave("3_Figures/FigX_NMDS_state_stressor_trophiclevel_res_check.png", height=6, width=16, units="in")
+```
+
+
+
+
+with linear models and t-tests by lake
+```{r}
+# combine all three of the NMDS data frames
+nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_phyto.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>% 
+                   rename(NMDS=MDS2) %>% 
+                   mutate(trophic_level="Phytoplankton"),
+
+ 
+           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_hetero_prot.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
+                   rename(NMDS=MDS2) %>% 
+                   mutate(trophic_level="Heterotrophic\nprotists & rotifers"),
+
+ 
+           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_zoop.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS1, d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
+                   rename(NMDS=MDS1) %>% 
+                   mutate(trophic_level="Zooplankton")
+           )
+
+# add in lake name and state
+nmds_comb <- left_join(nmds_comb, metadata %>% select(sample_id, lake_name, state), join_by(sample_id)) 
+
+nmds_comb$lake_name <- factor(nmds_comb$lake_name, levels = names(lake_colors))
+nmds_comb$state <- factor(nmds_comb$state, levels = c("Washington", "Wyoming","California"))
+nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplankton", "Heterotrophic\nprotists & rotifers", "Zooplankton"))
+
+
+
+####################
+### TEMPERATURE ####
+####################
+
+
+# Function to compute p-value for each group
+compute_pval <- function(data) {
+  model <- lm(NMDS ~ mean_air_temp_degC_anomaly_combined, data = data)
+  summary(model)$coefficients[2, 4]  # Extract p-value for slope
+}
+
+# Compute p-values per trophic level, lake, and state
+group_pvals <- nmds_comb %>%
+  group_by(trophic_level, lake_name, state) %>%
+  summarise(pval = compute_pval(pick(everything())), .groups = "drop")
+
+# Filter significant groups
+significant_groups <- group_pvals %>%
+  filter(pval < 0.05) %>%
+  select(trophic_level, lake_name, state)  # Keep all grouping vars
+
+# Merge with original data to filter for significant groups only
+filtered_data <- nmds_comb %>%
+  inner_join(significant_groups, by = c("trophic_level", "lake_name", "state"))
+
+# Plot
+temp <- ggplot(nmds_comb, aes(x = mean_air_temp_degC_anomaly_combined, 
+                              y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +  # Facet by trophic level & state
+  geom_point() +
+  geom_smooth(
+    data = filtered_data, 
+    method = "lm",
+    se = FALSE
+  ) +
+  scale_color_manual(values = lake_colors) +
+  custom_theme() + 
+  scale_y_reverse() +
+  labs(x = "Average annual air temperature anomaly\nfrom 1951-1980 mean (deg C)",
+       color = "Lake") + 
+  theme(strip.background = element_rect(fill = "white"),
+        strip.text.y = element_blank(),
+        legend.position = "none")
+
+
+#################
+### NITROGEN ####
+#################
+
+
+# Function to compute p-value for each group
+compute_pval <- function(data) {
+  model <- lm(NMDS ~ d15N_anomaly_mean_1800_1850, data = data)
+  summary(model)$coefficients[2, 4]  # Extract p-value for slope
+}
+
+# Compute p-values per trophic level, lake, and state
+group_pvals <- nmds_comb %>%
+  group_by(trophic_level, lake_name, state) %>%
+  summarise(pval = compute_pval(pick(everything())), .groups = "drop")
+
+# Filter significant groups
+significant_groups <- group_pvals %>%
+  filter(pval < 0.05) %>%
+  select(trophic_level, lake_name, state)  # Keep all grouping vars
+
+# Merge with original data to filter for significant groups only
+filtered_data <- nmds_comb %>%
+  inner_join(significant_groups, by = c("trophic_level", "lake_name", "state"))
+
+# Plot
+nit <- ggplot(nmds_comb, aes(x = d15N_anomaly_mean_1800_1850, 
+                              y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +  # Facet by trophic level & state
+  geom_point() +
+  geom_smooth(
+    data = filtered_data, 
+    method = "lm",
+    se = FALSE
+  ) +
+  scale_color_manual(values = lake_colors) +
+  custom_theme() + 
+  scale_y_reverse() +
+        scale_x_reverse()+
+  labs(x = expression(delta^15 * "N anomaly from 1800-1850 mean"),
+       color = "Lake") + 
+  theme(strip.background = element_rect(fill = "white"),
+        strip.text.y = element_blank(),
+        legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank())
+
+
+
+#################
+###### FISH #####
+#################
+# t-test for fish and fishless lakes, extracting p-value and t-tvalue to put on plot
+t_test_results <- nmds_comb %>%
+  group_by(trophic_level, state) %>%
+  summarise(
+    t_test = list(t.test(NMDS ~ fish_present_binary_YN, data = pick(everything()))),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    p_value = sapply(t_test, function(x) x$p.value),  
+    t_value = sapply(t_test, function(x) x$statistic),  # t-value
+    sig_label = ifelse(p_value < 0.05, "*", ""),  
+    y_sig = min(nmds_comb$NMDS, na.rm = TRUE) + 0.5,  #
+    y_tval = 1.2,  
+    t_label = paste0("t = ", round(t_value, 2)) 
+  ) %>% filter(p_value < 0.05) 
+
+
+# plot 
+fish <- ggplot(nmds_comb, aes(x = factor(fish_present_binary_YN), 
+                              y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +
+  geom_point(position = position_jitter(width = 0.2)) + 
+  geom_boxplot(aes(group = fish_present_binary_YN), color = "black", alpha = 0) +
+  scale_color_manual(values = lake_colors) +
+  custom_theme() + 
+  scale_y_reverse() +
+  labs(x = "Fish present", color = "Lake") +
+  theme(strip.background = element_rect(fill = "white"),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank())
+
+# add a star for signficant t-tests
+fish <- fish + geom_text(data = t_test_results, aes(x = 1.5, y = y_sig, label = sig_label), 
+                         color = "black", size = 8, fontface = "bold", inherit.aes = FALSE)
+
+# add the t-value
+fish <- fish + geom_text(data = t_test_results, aes(x = 1.5, y = y_tval, label = t_label), 
+                         color = "black", size = 4, inherit.aes = FALSE)
+
+
+(temp + nit + fish) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "right") &
+  guides(color = guide_legend(override.aes = list(size = 5)))  
+
+
+ggsave("3_Figures/SFigX_NMDS_state_stressor_trophiclevel_lake.png", height=6, width=16, units="in")
+```
+
+
+
+### ii. NMDS range of variability
+```{r}
+# combine all three of the NMDS data frames
+nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_phyto.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>% 
+                   rename(NMDS=MDS2) %>% 
+                   mutate(trophic_level="Phytoplankton"),
+
+ 
+           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_hetero_prot.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
+                   rename(NMDS=MDS2) %>% 
+                   mutate(trophic_level="Heterotrophic\nprotists & rotifers"),
+
+ 
+           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_zoop.csv", header=T, row.names = 1) %>% 
+                   select(sample_id, MDS1, d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
+                   rename(NMDS=MDS1) %>% 
+                   mutate(trophic_level="Zooplankton")
+           )
+
+# add in lake name and state
+nmds_comb <- left_join(nmds_comb, metadata %>% select(sample_id, lake_name, state, date_mid_AD_combo), join_by(sample_id)) 
+
+nmds_comb$lake_name <- factor(nmds_comb$lake_name, levels = names(lake_colors))
+nmds_comb$state <- factor(nmds_comb$state, levels = c("Washington", "Wyoming","California"))
+nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplankton", "Heterotrophic\nprotists & rotifers", "Zooplankton"))
+
+# make a pre-1900 and post-1900 column
+nmds_comb <- nmds_comb %>% mutate(pre_post_1900=case_when(date_mid_AD_combo<1900~"Pre-1900",
+                                                          date_mid_AD_combo>1900~"Post-1900")) %>% 
+        mutate(pre_post_1900=factor(pre_post_1900, levels=c("Pre-1900", "Post-1900")))
+
+
+# figure showing NMDS scores over time (cutting from 1600-2021) 
+time <- ggplot(nmds_comb, aes(x = date_mid_AD_combo, y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +
+  geom_line(linewidth=1.2) +
+  scale_color_manual(values = lake_colors) +
+  custom_theme() + 
+  xlim(c(1600,2022)) + 
+scale_y_reverse(limits=c(1.9, -2.18))+
+  labs(x="Date (Common Era)",
+       color = "Lake") + 
+        theme(strip.background = element_rect(fill = "white"),
+               strip.text.y = element_blank(), 
+              legend.position = "none") 
+
+
+# t-test for fish and fishless lakes, extracting p-value and t-tvalue to put on plot
+t_test_results <- nmds_comb %>%
+  group_by(trophic_level, state) %>%
+  summarise(
+    t_test = list(t.test(NMDS ~ pre_post_1900, data = pick(everything()))),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    p_value = sapply(t_test, function(x) x$p.value),  
+    t_value = sapply(t_test, function(x) x$statistic),  # t-value
+    sig_label = ifelse(p_value < 0.05, "*", ""),  
+    y_sig = min(nmds_comb$NMDS, na.rm = TRUE) + 0.5,  #
+    y_tval = 1.7,  
+    t_label = paste0("t = ", round(t_value, 2)) 
+  ) %>% filter(p_value < 0.05) 
+
+# box plots pre and post 1990
+time_box <- ggplot(nmds_comb, aes(x = pre_post_1900, 
+                              y = NMDS, color = lake_name)) +
+  facet_grid(trophic_level ~ state) +
+  geom_point(position = position_jitter(width = 0.2)) + 
+  geom_boxplot(aes(group = pre_post_1900), color = "black", alpha = 0) +
+  scale_color_manual(values = lake_colors) +
+  custom_theme() +   scale_y_reverse(limits=c(1.9, -2.18))+
+  labs(x = "", color = "Lake") +
+  theme(strip.background = element_rect(fill = "white"),
+         axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+# add star
+time_box <- time_box + geom_text(data = t_test_results, aes(x = 1.5, y = y_sig, label = sig_label), 
+                         color = "black", size = 8, fontface = "bold", inherit.aes = FALSE)
+
+# add the t-value
+time_box <- time_box + geom_text(data = t_test_results, aes(x = 1.5, y = y_tval, label = t_label), 
+                         color = "black", size = 4, inherit.aes = FALSE)
+
+(time + time_box) +
+  plot_layout(widths = c(2, 1)) + 
+  guides(color = guide_legend(override.aes = list(size = 5))) 
+
+ggsave("3_Figures/FigX_NMDS_natural_variability.png", height=6.5, width=15, units="in")
+# should have warning that 58 rows removed (these are values prior to 1600)
+
+```
+
+
+
+### iii. max NMDS and stressor max
 by state only
 ```{r}
 # combine all three of the NMDS data frames
@@ -3649,6 +4210,13 @@ all_trophic_top <- all_trophic %>% filter(taxonomic_group %in% clust_tax)
 rm(sub);rm(ps_V9_norm_hetero);rm(ps_V9_norm_phyto);rm(ps_V9_norm_sub); rm(ps_V9_norm_zoop); rm(clust_tax)
 ```
 
+How many lakes by 1600? 5 lakes, so start at this point for averaging
+```{r}
+all_trophic %>% filter(date_mid_AD_combo < 1600) %>% pull(lake_name) %>% unique(.)
+```
+
+
+
 ### 1. Averages overall
 for top taxa
 ```{r}
@@ -3666,15 +4234,15 @@ all_trophic_top$trophic_level_tax_group <- factor(
 
 avg_lake_50yrs<-all_trophic_top %>% 
         mutate(date_window_50yrs=cut(date_mid_AD_combo,
-                        breaks = seq(1400, 2050, by = 50),
+                        breaks = seq(1600, 2050, by = 50),
                         right=F, # intervals are left closed [1400,1450)
-                        labels = paste(seq(1400, 2000, by = 50), 
-                                       seq(1449, 2049, by = 50), sep = "-")))%>%
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
        group_by(trophic_level_tax_group, date_window_50yrs) %>% 
         summarize(avg_abund=mean(abundance),
                   median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>%
         ungroup() %>%
-        # the relative abundance for prior to 1400 is listed as NA - so remove it here
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
         filter(complete.cases(.))
 
 
@@ -3693,7 +4261,7 @@ ggplot(data=all_trophic_top, aes(x=date_mid_AD_combo, y=abundance, color=lake_na
 ggsave("3_Figures/FigX_clustered_rel_abund_lake_top.png", height=10, width=20, units="in")
 ```
 
-for all taxa 
+for all taxa
 ```{r}
 all_trophic$trophic_level_tax_group <- factor(
         all_trophic$trophic_level_tax_group,
@@ -3721,15 +4289,15 @@ all_trophic$trophic_level_tax_group <- factor(
 
 avg_lake_50yrs<-all_trophic %>% 
         mutate(date_window_50yrs=cut(date_mid_AD_combo,
-                        breaks = seq(1400, 2050, by = 50),
+                        breaks = seq(1600, 2050, by = 50),
                         right=F, # intervals are left closed [1400,1450)
-                        labels = paste(seq(1400, 2000, by = 50), 
-                                       seq(1449, 2049, by = 50), sep = "-")))%>%
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
        group_by(trophic_level_tax_group, date_window_50yrs) %>% 
         summarize(avg_abund=mean(abundance),
                   median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>%
         ungroup() %>%
-        # the relative abundance for prior to 1400 is listed as NA - so remove it here
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
         filter(complete.cases(.))
 
 
@@ -3750,7 +4318,7 @@ ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name))
 ggsave("3_Figures/FigX_clustered_rel_abund_lake_all.png", height=10, width=20, units="in")
 ```
 
-#### i. Stats for ms - avgs overall
+#### i. Stats for ms - avgs overall - not updated only looking after 1600 but stats should be the same, but this does remove before 1600 so not the same - needs updating!
 ##### L1 - phytoplankton
 ```{r}
 phyto_LME<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.05=="Yes") %>%  mutate(across(where(is.numeric), ~ round(.x, 3)))
@@ -3770,7 +4338,7 @@ avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Chlorophyta"
 
 # to low around 2000
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Chlorophyta" & median_year > 1850) %>% pull(avg_abund) %>% min(.) %>% round(.,digits=3) %>%   `*`(100) 
-#[1] 46.8
+#[1] 16.7
 
 phyto_LME %>% filter(taxa=="Chlorophyta") %>% select(term, Value, fish)
 #                  term  Value     fish
@@ -4120,15 +4688,15 @@ all_trophic_top$lake_name_fish<-factor(all_trophic_top$lake_name, levels=names(l
 
 avg_lake_50yrs<-all_trophic_top %>% 
         mutate(date_window_50yrs=cut(date_mid_AD_combo,
-                        breaks = seq(1400, 2050, by = 50),
+                        breaks = seq(1600, 2050, by = 50),
                         right=F, # intervals are left closed [1400,1450)
-                        labels = paste(seq(1400, 2000, by = 50), 
-                                       seq(1449, 2049, by = 50), sep = "-")))%>%
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
        group_by(trophic_level_tax_group, date_window_50yrs, fish) %>% 
         summarize(avg_abund=mean(abundance),
                   median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>%
         ungroup() %>% 
-        # the relative abundance for prior to 1400 is listed as NA - so remove it here
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
         filter(complete.cases(.))
 
 
@@ -4182,7 +4750,83 @@ ggsave("3_Figures/FigX_clustered_rel_abund_lake_fish_top.png", height=6.5, width
 # ggsave("3_Figures/FigX_clustered_rel_abund_lake_fish_avg_50yrs_legend.png", height=5, width=6, units="in")
 ```
 
-#### i. Stats for ms - fish vs fishless
+
+Separating out Bullfrog and Middle Gaylor for Leptodiaptomus
+```{r}
+all_trophic_top$trophic_level_tax_group <- factor(
+        all_trophic_top$trophic_level_tax_group,
+        levels = c(
+                "Phytoplankton - Chlorophyta",
+                "Phytoplankton - Streptophyta",
+                "Phytoplankton - Gyrista",
+                "Phytoplankton - Dinoflagellata",
+                "Heterotrophic protists - Ciliophora",
+                "Zooplankton - Leptodiaptomus",
+                "Zooplankton - Hesperodiaptomus",
+                "Zooplankton - Daphnia spp."))
+
+
+lake_colors_fish <- c("Crescent" = "gold3", 
+                 "Canyon" = "gold3", 
+                 "Eyrie" = "gold3",
+                 "Lightning" = "gold3",
+                 "Soldier" = "gold3", 
+                 "Skelton" = "gold3", 
+                  "Louise" = "palevioletred3",
+                 "Monogram" = "palevioletred3",
+                 "Scott" = "palevioletred3",
+                 "Black Rock" = "palevioletred3",
+                 "Footprint" = "palevioletred3",
+                 "Lost" = "palevioletred3",
+                 "Bullfrog" = "palevioletred3",
+                 "Middle Gaylor"= "palevioletred3")
+
+all_trophic_top$lake_name_fish<-factor(all_trophic_top$lake_name, levels=names(lake_colors_fish))
+
+all_trophic_top <- all_trophic_top %>% mutate(fish_split = case_when(lake_name%in%c("Bullfrog","Middle Gaylor")~ "Fish_lepto",
+         lake_name%in%c("Crescent","Canyon" ,"Eyrie","Lightning","Soldier","Skelton" )~"Fishless",
+         lake_name%in%c("Louise", "Monogram", "Scott", "Black Rock","Footprint","Lost")~"Fish"))
+
+avg_lake_50yrs<-all_trophic_top %>% 
+        mutate(date_window_50yrs=cut(date_mid_AD_combo,
+                        breaks = seq(1600, 2050, by = 50),
+                        right=F, # intervals are left closed [1400,1450)
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
+       group_by(trophic_level_tax_group, date_window_50yrs, fish_split) %>% 
+        summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>%
+        ungroup() %>% 
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
+        filter(complete.cases(.))     %>% 
+        # add back in state and state color
+        left_join(., all_trophic_top %>% select(fish, fish_split) %>% distinct(.), join_by(fish_split))
+
+
+ggplot(data=all_trophic_top, aes(x=date_mid_AD_combo, y=abundance, color=lake_name_fish))+
+        facet_wrap2(~ trophic_level_tax_group, nrow = 4, ncol = 2,
+                    strip = strip_themed(
+    background_x = elem_list_rect(fill = c(rep("#33B58C",4), rep("#85CFFF",1), rep("#E07B33",3)))))+
+        geom_line(alpha = 0.6) + 
+        geom_line(data=avg_lake_50yrs %>% filter(fish_split=="Fish_lepto"), aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="palevioletred3")+
+                geom_line(data=avg_lake_50yrs %>% filter(fish_split=="Fishless"), aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, color="gold3")+
+                geom_line(data=avg_lake_50yrs %>% filter(fish_split=="Fish"), aes(x=median_year, y=avg_abund, color=NULL), linewidth=2, linetype="dashed", color="palevioletred3")+
+        custom_theme()+
+        labs(color="Lake",
+             y="Relative abundance (proportion)",
+             x="Date (Common Era)")+
+        scale_color_manual(values=lake_colors_fish)+
+        theme(legend.position = "none")
+
+ggsave("3_Figures/FigX_clustered_rel_abund_lake_fish_top_lepto.png", height=6.5, width=7, units="in")
+```
+
+
+
+
+
+
+#### i. Stats for ms - fish vs fishless - need to update with 1600 cut off!
 ##### L3 Zooplankton
 ```{r}
 ### Hesperodiaptomus ### 
@@ -4309,15 +4953,15 @@ all_trophic_top$lake_name_state<-factor(all_trophic_top$lake_name, levels=names(
 
 avg_lake_50yrs<-all_trophic_top %>% 
         mutate(date_window_50yrs=cut(date_mid_AD_combo,
-                        breaks = seq(1400, 2050, by = 50),
+                        breaks = seq(1600, 2050, by = 50),
                         right=F, # intervals are left closed [1400,1450)
-                        labels = paste(seq(1400, 2000, by = 50), 
-                                       seq(1449, 2049, by = 50), sep = "-")))%>%
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
        group_by(trophic_level_tax_group, date_window_50yrs, state) %>% 
         summarize(avg_abund=mean(abundance),
                   median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>% 
         ungroup() %>% 
-        # the relative abundance for prior to 1400 is listed as NA - so remove it here
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
         filter(complete.cases(.))
 
 
@@ -4398,15 +5042,15 @@ all_trophic$lake_name_state<-factor(all_trophic$lake_name, levels=names(lake_col
 
 avg_lake_50yrs<-all_trophic %>% 
         mutate(date_window_50yrs=cut(date_mid_AD_combo,
-                        breaks = seq(1400, 2050, by = 50),
+                        breaks = seq(1600, 2050, by = 50),
                         right=F, # intervals are left closed [1400,1450)
-                        labels = paste(seq(1400, 2000, by = 50), 
-                                       seq(1449, 2049, by = 50), sep = "-")))%>%
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
        group_by(trophic_level_tax_group, date_window_50yrs, state) %>% 
         summarize(avg_abund=mean(abundance),
                   median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>% 
         ungroup() %>% 
-        # the relative abundance for prior to 1400 is listed as NA - so remove it here
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
         filter(complete.cases(.))
 
 
@@ -4432,3 +5076,5 @@ and state (solid)",
 ggsave("3_Figures/FigX_clustered_rel_abund_lake_state_all.png", height=10, width=20, units="in")
 
 ```
+
+
