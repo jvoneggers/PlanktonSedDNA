@@ -13,7 +13,7 @@ editor_options:
 library(phyloseq)
 library(ggh4x) # facet_wrap2
 library(lubridate) # Julian date in modelling 210Pb
-library(patchwork) # if end up patching figures
+library(patchwork) # patching figures
 library(Biostrings) # for blasting zooplankton
 library(strucchange) # breakpoint analysis 
 library(nlme) # linear mixed effects models
@@ -3193,189 +3193,6 @@ stop()
 
 ## a. NMDS 
 ### i. by trophic level, state, and stressor
-with linear models and t-tests
-```{r}
-# combine all three of the NMDS data frames
-nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_phyto.csv", header=T, row.names = 1) %>% 
-                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>% 
-                   rename(NMDS=MDS2) %>% 
-                   mutate(trophic_level="Phytoplankton"),
-
- 
-           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_hetero_prot.csv", header=T, row.names = 1) %>% 
-                   select(sample_id, MDS2,d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
-                   rename(NMDS=MDS2) %>% 
-                   mutate(trophic_level="Heterotrophic\nprotists & rotifers"),
-
- 
-           read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_zoop.csv", header=T, row.names = 1) %>% 
-                   select(sample_id, MDS1, d15N_anomaly_mean_1800_1850, mean_air_temp_degC_anomaly_combined, fish_present_binary_YN) %>%
-                   rename(NMDS=MDS1) %>% 
-                   mutate(trophic_level="Zooplankton")
-           )
-
-# add in lake name and state
-nmds_comb <- left_join(nmds_comb, metadata %>% select(sample_id, lake_name, state), join_by(sample_id)) 
-
-nmds_comb$lake_name <- factor(nmds_comb$lake_name, levels = names(lake_colors))
-nmds_comb$state <- factor(nmds_comb$state, levels = c("Washington", "Wyoming","California"))
-nmds_comb$trophic_level <- factor(nmds_comb$trophic_level, levels = c("Phytoplankton", "Heterotrophic\nprotists & rotifers", "Zooplankton"))
-
-
-####################
-### TEMPERATURE ####
-####################
-
-# run linear models, grab r-sq and p-value, only plot pval < 0.05
-model_stats <- nmds_comb %>%
-  group_by(trophic_level, state) %>%
-  summarise(
-    lm_fit = list(lm(NMDS ~ mean_air_temp_degC_anomaly_combined, data = pick(everything()))),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    p_value = sapply(lm_fit, function(m) summary(m)$coefficients[2, 4]), # p-val
-    r_squared = sapply(lm_fit, function(m) summary(m)$r.squared)
-  ) %>%
-  filter(p_value < 0.05) %>% 
-  mutate(
-    label = paste0("R² = ", signif(r_squared, 3)),
-    x_pos = max(nmds_comb$mean_air_temp_degC_anomaly_combined, na.rm = TRUE)*0.5, 
-    y_pos = 1.2 
-  )
-
-# make separate dataframe of only signficant models to plot the lines
-significant_models <- nmds_comb %>%
-  inner_join(model_stats, by = c("trophic_level", "state"))
-
-# plot
-temp <- ggplot(nmds_comb, aes(x = mean_air_temp_degC_anomaly_combined, 
-                              y = NMDS, color = lake_name)) +
-  facet_grid(trophic_level ~ state) +
-  geom_point() +
-  scale_color_manual(values = lake_colors) +
-  custom_theme() + 
-  scale_y_reverse() +
-  labs(x = "Average annual air temperature anomaly\nfrom 1951-1980 mean (deg C)",
-       color = "Lake") + 
-  theme(strip.background = element_rect(fill = "white"),
-        strip.text.y = element_blank())
-
-# plot regression lines when significant
-if (nrow(significant_models) > 0) {
-  temp <- temp + geom_smooth(data = significant_models, 
-                             method = "lm", color = "black", se = FALSE)
-}
-
-# add in r-squared to plot
-temp <- temp + geom_text(data = model_stats, aes(x = x_pos, y = y_pos, label = label),
-                         color = "black", size = 4, inherit.aes = FALSE)
-
-#################
-### NITROGEN ####
-#################
-# run linear models, grab r-sq and p-value, only plot pval < 0.05
-model_stats <- nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>% 
-  group_by(trophic_level, state) %>%
-  summarise(
-    lm_fit = list(lm(NMDS ~ d15N_anomaly_mean_1800_1850, data = pick(everything()))),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    p_value = sapply(lm_fit, function(m) summary(m)$coefficients[2, 4]), # grab p-val
-    r_squared = sapply(lm_fit, function(m) summary(m)$r.squared) # grab r-sq
-  ) %>%
-  filter(p_value < 0.05) %>% # plot significant models only 
-  mutate(
-    label = paste0("R² = ", signif(r_squared, 3)),
-    x_pos = min(nmds_comb$d15N_anomaly_mean_1800_1850, na.rm = TRUE)*0.6,  
-    y_pos = 1.2 
-  )
-
-# make separate dataframe of only signficant models to plot the lines
-significant_models <- nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>%
-  inner_join(model_stats, by = c("trophic_level", "state"))
-
-nit <- ggplot(nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F), 
-              aes(x = d15N_anomaly_mean_1800_1850, y = NMDS, color = lake_name)) +
-  facet_grid(trophic_level ~ state) +
-  geom_point() +
-  scale_color_manual(values = lake_colors) +
-  custom_theme() + 
-  scale_y_reverse() +
-  scale_x_reverse() + 
-  labs(x=expression(delta^15 * "N anomaly from 1800-1850 mean"),
-       color = "Lake") + 
-        theme(strip.background = element_rect(fill = "white"),
-               axis.title.y = element_blank(),
-              axis.text.y = element_blank(),
-               strip.text.y = element_blank())
-
-
-# plot regression lines when significant
-if (nrow(significant_models) > 0) {
-  nit <- nit + geom_smooth(data = significant_models, 
-                             method = "lm", color = "black", se = FALSE)
-}
-
-# add in r-squared to plot
-nit <- nit + geom_text(data = model_stats, aes(x = x_pos, y = y_pos, label = label),
-                         color = "black", size = 4, inherit.aes = FALSE)
-
-#################
-###### FISH #####
-#################
-# t-test for fish and fishless lakes, extracting p-value and t-tvalue to put on plot
-t_test_results <- nmds_comb %>%
-  group_by(trophic_level, state) %>%
-  summarise(
-    t_test = list(t.test(NMDS ~ fish_present_binary_YN, data = pick(everything()))),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    p_value = sapply(t_test, function(x) x$p.value),  
-    t_value = sapply(t_test, function(x) x$statistic),  # t-value
-    sig_label = ifelse(p_value < 0.05, "*", ""),  
-    y_sig = min(nmds_comb$NMDS, na.rm = TRUE) + 0.5,  #
-    y_tval = 1.2,  
-    t_label = paste0("t = ", round(t_value, 2)) 
-  ) %>% filter(p_value < 0.05) 
-
-
-# plot 
-fish <- ggplot(nmds_comb, aes(x = factor(fish_present_binary_YN), 
-                              y = NMDS, color = lake_name)) +
-  facet_grid(trophic_level ~ state) +
-  geom_point(position = position_jitter(width = 0.2)) + 
-  geom_boxplot(aes(group = fish_present_binary_YN), color = "black", alpha = 0) +
-  scale_color_manual(values = lake_colors) +
-  custom_theme() + 
-  scale_y_reverse() +
-  labs(x = "Fish present", color = "Lake") +
-  theme(strip.background = element_rect(fill = "white"),
-        axis.title.y = element_blank(),
-        axis.text.y = element_blank())
-
-# add a star for signficant t-tests
-fish <- fish + geom_text(data = t_test_results, aes(x = 1.5, y = y_sig, label = sig_label), 
-                         color = "black", size = 8, fontface = "bold", inherit.aes = FALSE)
-
-# add the t-value
-fish <- fish + geom_text(data = t_test_results, aes(x = 1.5, y = y_tval, label = t_label), 
-                         color = "black", size = 4, inherit.aes = FALSE)
-
-
-(temp + nit + fish) + 
-  plot_layout(guides = "collect") & 
-  theme(legend.position = "right") &
-  guides(color = guide_legend(override.aes = list(size = 5)))  
-
-
-ggsave("3_Figures/SFigX_NMDS_state_stressor_trophiclevel.png", height=6, width=16, units="in")
-```
-
-
-
 with linear models and t-tests but running through a residuals check (manual)
 ```{r}
 # combine all three of the NMDS data frames
@@ -3419,15 +3236,12 @@ model_stats <- nmds_comb %>%
   mutate(
     p_value = sapply(lm_fit, function(m) summary(m)$coefficients[2, 4]), # p-val
     r_squared = sapply(lm_fit, function(m) summary(m)$r.squared),
-    residuals = lapply(lm_fit, residuals), # grab residuals
-    shapiro_p = sapply(residuals, function(res) shapiro.test(res)$p.value), # test for normality
-    bp_p = sapply(lm_fit, function(m) bptest(m)$p.value) # test for heteroscedasticity
   ) %>%
   filter(p_value < 0.05) %>% 
   mutate(
-    label = paste0("R² = ", signif(r_squared, 3)),
-    x_pos = max(nmds_comb$mean_air_temp_degC_anomaly_combined, na.rm = TRUE)*0.5, 
-    y_pos = 1.2 
+    label = paste0("R² = ", format(round(r_squared, digits=2), nsmall = 2)),
+    x_pos = max(nmds_comb$mean_air_temp_degC_anomaly_combined, na.rm = TRUE)*0.6, 
+    y_pos = 1.7 
   )
 
 
@@ -3448,7 +3262,7 @@ for(i in 1:nrow(model_stats)){
 rm(st_res); rm(i); rm(model); rm(residuals); rm(fitted_vals)
 
 # thresholds for removal:
-# more than 5 points outside of qqplto 95% envelope
+# more than 5 points outside of qq plot 95% envelope
 # residuals verses fitted look non-normal with a trend
 
 # Remove:
@@ -3481,7 +3295,7 @@ temp <- ggplot(nmds_comb, aes(x = mean_air_temp_degC_anomaly_combined,
   geom_point() +
   scale_color_manual(values = lake_colors) +
   custom_theme() + 
-  scale_y_reverse() +
+  scale_y_reverse(limits=c(1.9, -2.18))+
   labs(x = "Average annual air temperature anomaly\nfrom 1951-1980 mean (deg C)",
        color = "Lake") + 
   theme(strip.background = element_rect(fill = "white"),
@@ -3510,15 +3324,12 @@ model_stats <- nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F) %>%
   mutate(
     p_value = sapply(lm_fit, function(m) summary(m)$coefficients[2, 4]), # grab p-val
     r_squared = sapply(lm_fit, function(m) summary(m)$r.squared), # grab r-sq
-    residuals = lapply(lm_fit, residuals), # grab residuals
-    shapiro_p = sapply(residuals, function(res) shapiro.test(res)$p.value), # test for normality
-    bp_p = sapply(lm_fit, function(m) bptest(m)$p.value) # test for heteroscedasticity
   ) %>%
   filter(p_value < 0.05) %>% 
   mutate(
-    label = paste0("R² = ", signif(r_squared, 3)),
-    x_pos = min(nmds_comb$d15N_anomaly_mean_1800_1850, na.rm = TRUE)*0.6,  
-    y_pos = 1.2 
+    label = paste0("R² = ", format(round(r_squared, digits=2), nsmall = 2)),
+    x_pos = min(nmds_comb$d15N_anomaly_mean_1800_1850, na.rm = TRUE)*0.7,  
+    y_pos = 1.7
   )
 
 
@@ -3563,7 +3374,7 @@ nit <- ggplot(nmds_comb %>% filter(is.na(d15N_anomaly_mean_1800_1850)==F),
   geom_point() +
   scale_color_manual(values = lake_colors) +
   custom_theme() + 
-  scale_y_reverse() +
+  scale_y_reverse(limits=c(1.9, -2.18))+
   scale_x_reverse() + 
   labs(x=expression(delta^15 * "N anomaly from 1800-1850 mean"),
        color = "Lake") + 
@@ -3598,7 +3409,7 @@ t_test_results <- nmds_comb %>%
     t_value = sapply(t_test, function(x) x$statistic),  # t-value
     sig_label = ifelse(p_value < 0.05, "*", ""),  
     y_sig = min(nmds_comb$NMDS, na.rm = TRUE) + 0.5,  #
-    y_tval = 1.2,  
+    y_tval = 1.7,  
     t_label = paste0("t = ", round(t_value, 2)) 
   ) %>% filter(p_value < 0.05) 
 
@@ -3611,7 +3422,7 @@ fish <- ggplot(nmds_comb, aes(x = factor(fish_present_binary_YN),
   geom_boxplot(aes(group = fish_present_binary_YN), color = "black", alpha = 0) +
   scale_color_manual(values = lake_colors) +
   custom_theme() + 
-  scale_y_reverse() +
+  scale_y_reverse(limits=c(1.9, -2.18))+
   labs(x = "Fish present", color = "Lake") +
   theme(strip.background = element_rect(fill = "white"),
         axis.title.y = element_blank(),
@@ -3632,13 +3443,13 @@ fish <- fish + geom_text(data = t_test_results, aes(x = 1.5, y = y_tval, label =
   guides(color = guide_legend(override.aes = list(size = 5)))  
 
 
-ggsave("3_Figures/FigX_NMDS_state_stressor_trophiclevel_res_check.png", height=6, width=16, units="in")
+ggsave("3_Figures/FigX_NMDS_state_stressor_trophiclevel_res_check.png", height=6.5, width=16, units="in")
 ```
 
 
 
 
-with linear models and t-tests by lake
+with linear models and t-tests by lake - no residual check
 ```{r}
 # combine all three of the NMDS data frames
 nmds_comb <-rbind(read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/NMDS_phyto.csv", header=T, row.names = 1) %>% 
@@ -3912,6 +3723,48 @@ ggsave("3_Figures/FigX_NMDS_natural_variability.png", height=6.5, width=15, unit
 
 ```
 
+Stats for MS
+```{r}
+#subset for 1600 onwards like the figure or for all values? I think all values
+nmds_comb %>% group_by(pre_post_1900, trophic_level, state) %>% summarize(min_nmds=round(min(NMDS),digits=2),
+                                                                          max_nmds=round(max(NMDS),digits=2))
+
+
+#    pre_post_1900 trophic_level                        state      min_nmds max_nmds
+#    <fct>         <fct>                                <fct>         <dbl>    <dbl>
+#  1 Pre-1900      "Phytoplankton"                      Washington    -0.01     0.91
+#  2 Pre-1900      "Phytoplankton"                      Wyoming       -0.15     1.07
+#  3 Pre-1900      "Phytoplankton"                      California    -0.57     0.99
+#  4 Pre-1900      "Heterotrophic\nprotists & rotifers" Washington    -0.23     0.86
+#  5 Pre-1900      "Heterotrophic\nprotists & rotifers" Wyoming       -0.09     0.53
+#  6 Pre-1900      "Heterotrophic\nprotists & rotifers" California    -0.75     0.61
+#  7 Pre-1900      "Zooplankton"                        Washington    -0.46     0.77
+#  8 Pre-1900      "Zooplankton"                        Wyoming       -0.7      1.17
+#  9 Pre-1900      "Zooplankton"                        California    -1.77     0.8 
+# 10 Post-1900     "Phytoplankton"                      Washington    -0.94     0.63
+# 11 Post-1900     "Phytoplankton"                      Wyoming       -2.06     0.52
+# 12 Post-1900     "Phytoplankton"                      California    -1.41     1.48
+# 13 Post-1900     "Heterotrophic\nprotists & rotifers" Washington    -0.73     0.98
+# 14 Post-1900     "Heterotrophic\nprotists & rotifers" Wyoming       -1.16     0.45
+# 15 Post-1900     "Heterotrophic\nprotists & rotifers" California    -1.12     0.57
+# 16 Post-1900     "Zooplankton"                        Washington    -0.48     0.94
+# 17 Post-1900     "Zooplankton"                        Wyoming       -1.87     1.15
+# 18 Post-1900     "Zooplankton"                        California    -2.16     1.26
+
+
+nmds_comb %>% group_by(pre_post_1900, trophic_level) %>% summarize(min_nmds=round(min(NMDS),digits=2),
+                                                                          max_nmds=round(max(NMDS),digits=2))
+#   pre_post_1900 trophic_level                        min_nmds max_nmds
+# 1 Pre-1900      "Phytoplankton"                         -0.57     1.07
+# 2 Pre-1900      "Heterotrophic\nprotists & rotifers"    -0.75     0.86
+# 3 Pre-1900      "Zooplankton"                           -1.77     1.17
+# 4 Post-1900     "Phytoplankton"                         -2.06     1.48
+# 5 Post-1900     "Heterotrophic\nprotists & rotifers"    -1.16     0.98
+# 6 Post-1900     "Zooplankton"                           -2.16     1.26
+
+```
+
+
 
 
 ### iii. max NMDS and stressor max
@@ -4048,7 +3901,7 @@ ggsave("3_Figures/FigX_LME_summary_fish.png", height=5, width=8, units="in")
 
 ### i. MS stats for summary
 ```{r}
-sig_lme
+sig_lme %>% arrange(fish,trophic_level,term)
 
 #    trophic_level          term                fish     mean_effect
 #    <fct>                  <fct>               <fct>          <dbl>
@@ -4318,7 +4171,7 @@ ggplot(data=all_trophic, aes(x=date_mid_AD_combo, y=abundance, color=lake_name))
 ggsave("3_Figures/FigX_clustered_rel_abund_lake_all.png", height=10, width=20, units="in")
 ```
 
-#### i. Stats for ms - avgs overall - not updated only looking after 1600 but stats should be the same, but this does remove before 1600 so not the same - needs updating!
+#### i. Stats for ms - avgs overall 
 ##### L1 - phytoplankton
 ```{r}
 phyto_LME<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-UniversityofWyoming/LakeSedDNA/Data/PhytoZoopSedDNA/2_DataAnalysis/V9_LME_phytoplankton_model_output_no_interactions.csv", header=T, row.names=1) %>% filter(pval0.05=="Yes") %>%  mutate(across(where(is.numeric), ~ round(.x, 3)))
@@ -4327,14 +4180,37 @@ phyto_LME<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-Universi
 phyto_LME %>% filter(pval0.05=="Yes" & Value > 0.04 | Value < (-0.04)) %>% pull(taxa) %>% unique(.)
 # [1] "Chlorophyta"    "Dinoflagellata" "Gyrista"        "Streptophyta"  
 
+avg_lake_50yrs<-all_trophic_top %>% 
+        mutate(date_window_50yrs=cut(date_mid_AD_combo,
+                        breaks = seq(1600, 2050, by = 50),
+                        right=F, # intervals are left closed [1400,1450)
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
+       group_by(trophic_level_tax_group, date_window_50yrs) %>% 
+        summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>%
+        ungroup() %>%
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
+        filter(complete.cases(.))
+
 ## Chlorophyta ##
 
 # Look at overall abundance over time
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Chlorophyta")
+#   trophic_level_tax_group     date_window_50yrs avg_abund median_year
+# 1 Phytoplankton - Chlorophyta 1600-1649             0.504       1624.
+# 2 Phytoplankton - Chlorophyta 1650-1699             0.496       1674.
+# 3 Phytoplankton - Chlorophyta 1700-1749             0.479       1724.
+# 4 Phytoplankton - Chlorophyta 1750-1799             0.466       1774.
+# 5 Phytoplankton - Chlorophyta 1800-1849             0.485       1824.
+# 6 Phytoplankton - Chlorophyta 1850-1899             0.394       1874.
+# 7 Phytoplankton - Chlorophyta 1900-1949             0.334       1924.
+# 8 Phytoplankton - Chlorophyta 1950-1999             0.269       1974.
+# 9 Phytoplankton - Chlorophyta 2000-2049             0.167       2024.
 
-# average high prior to 1850
+# average from 1600-1850
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Chlorophyta" & median_year < 1850) %>% pull(avg_abund) %>% mean(.) %>% round(.,digits=3) %>%   `*`(100) 
-#[1] 46.8
+#[1] 48.6
 
 # to low around 2000
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Chlorophyta" & median_year > 1850) %>% pull(avg_abund) %>% min(.) %>% round(.,digits=3) %>%   `*`(100) 
@@ -4354,10 +4230,22 @@ phyto_LME %>% filter(taxa=="Chlorophyta") %>% select(term, Value, fish)
 # Look at overall abundance over time
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Dinoflagellata")
 
-# average low prior to 18 decline around 1900
-avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Dinoflagellata" & median_year < 1900) %>% pull(avg_abund) %>% mean(.) %>% round(.,digits=3) %>%   `*`(100) 
-#[1] 12.7
+#   trophic_level_tax_group        date_window_50yrs avg_abund median_year
+# 1 Phytoplankton - Dinoflagellata 1600-1649            0.117        1624.
+# 2 Phytoplankton - Dinoflagellata 1650-1699            0.147        1674.
+# 3 Phytoplankton - Dinoflagellata 1700-1749            0.0901       1724.
+# 4 Phytoplankton - Dinoflagellata 1750-1799            0.0881       1774.
+# 5 Phytoplankton - Dinoflagellata 1800-1849            0.0966       1824.
+# 6 Phytoplankton - Dinoflagellata 1850-1899            0.118        1874.
+# 7 Phytoplankton - Dinoflagellata 1900-1949            0.176        1924.
+# 8 Phytoplankton - Dinoflagellata 1950-1999            0.288        1974.
+# 9 Phytoplankton - Dinoflagellata 2000-2049            0.318        2024.
 
+# average low prior 1600-1900
+avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Dinoflagellata" & median_year < 1900) %>% pull(avg_abund) %>% mean(.) %>% round(.,digits=3) %>%   `*`(100) 
+#[1] 11.0
+
+#after 1900
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Dinoflagellata" & median_year > 1900) %>% pull(avg_abund) %>% max(.) %>% round(.,digits=3) %>%   `*`(100) 
 #[1] 31.8
 
@@ -4371,11 +4259,22 @@ phyto_LME %>% filter(taxa=="Dinoflagellata") %>% select(term, Value, fish)
 
 # Look at overall abundance over time
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Gyrista")
+#   trophic_level_tax_group date_window_50yrs avg_abund median_year
+# 1 Phytoplankton - Gyrista 1600-1649             0.252       1624.
+# 2 Phytoplankton - Gyrista 1650-1699             0.253       1674.
+# 3 Phytoplankton - Gyrista 1700-1749             0.303       1724.
+# 4 Phytoplankton - Gyrista 1750-1799             0.314       1774.
+# 5 Phytoplankton - Gyrista 1800-1849             0.248       1824.
+# 6 Phytoplankton - Gyrista 1850-1899             0.265       1874.
+# 7 Phytoplankton - Gyrista 1900-1949             0.377       1924.
+# 8 Phytoplankton - Gyrista 1950-1999             0.405       1974.
+# 9 Phytoplankton - Gyrista 2000-2049             0.494       2024.
 
-# average low prior to 18 decline around 1900
+# average low prior 1600-1900
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Gyrista" & median_year < 1900) %>% pull(avg_abund) %>% mean(.) %>% round(.,digits=3) %>%   `*`(100) 
-#[1]  23.5
+#[1]  27.2
 
+# higher after 1900
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Gyrista" & median_year > 1900) %>% pull(avg_abund) %>% max(.) %>% round(.,digits=3) %>%   `*`(100) 
 #[1] 49.4
 
@@ -4389,10 +4288,20 @@ phyto_LME %>% filter(taxa=="Gyrista") %>% select(term, Value, fish)
 
 # Look at overall abundance over time
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Streptophyta")
+#   trophic_level_tax_group      date_window_50yrs avg_abund median_year
+# 1 Phytoplankton - Streptophyta 1600-1649           0.122         1624.
+# 2 Phytoplankton - Streptophyta 1650-1699           0.0994        1674.
+# 3 Phytoplankton - Streptophyta 1700-1749           0.123         1724.
+# 4 Phytoplankton - Streptophyta 1750-1799           0.127         1774.
+# 5 Phytoplankton - Streptophyta 1800-1849           0.165         1824.
+# 6 Phytoplankton - Streptophyta 1850-1899           0.215         1874.
+# 7 Phytoplankton - Streptophyta 1900-1949           0.109         1924.
+# 8 Phytoplankton - Streptophyta 1950-1999           0.0344        1974.
+# 9 Phytoplankton - Streptophyta 2000-2049           0.00833       2024.
 
-# average low prior to 18 decline around 1900
+# average low prior 1600-1900
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Streptophyta" & median_year < 1900) %>% pull(avg_abund) %>% mean(.) %>% round(.,digits=3) %>%   `*`(100) 
-#[1]  17.0
+#[1]  14.2
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Phytoplankton - Streptophyta" & median_year > 1900) %>% pull(avg_abund) %>% min(.) %>% round(.,digits=3) %>%   `*`(100) 
 #[1]  0.8
@@ -4450,24 +4359,36 @@ hetero_LME<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-Univers
 hetero_LME %>% filter(pval0.05=="Yes" & Value > 0.04 | Value < (-0.04)) %>% pull(taxa) %>% unique(.)
 # "Ciliophora"
 
+
+avg_lake_50yrs<-all_trophic_top %>% 
+        mutate(date_window_50yrs=cut(date_mid_AD_combo,
+                        breaks = seq(1600, 2050, by = 50),
+                        right=F, # intervals are left closed [1400,1450)
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
+       group_by(trophic_level_tax_group, date_window_50yrs) %>% 
+        summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>%
+        ungroup() %>%
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
+        filter(complete.cases(.))
+
+
 ## Ciliophora ##
 
 # Look at overall abundance over time
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Heterotrophic protists - Ciliophora")
-#    trophic_level_tax_group             date_window_50yrs avg_abund median_year
-#  1 Heterotrophic protists - Ciliophora 1400-1449             0.165       1424.
-#  2 Heterotrophic protists - Ciliophora 1450-1499             0.158       1474.
-#  3 Heterotrophic protists - Ciliophora 1500-1549             0.116       1524.
-#  4 Heterotrophic protists - Ciliophora 1550-1599             0.181       1574.
-#  5 Heterotrophic protists - Ciliophora 1600-1649             0.220       1624.
-#  6 Heterotrophic protists - Ciliophora 1650-1699             0.221       1674.
-#  7 Heterotrophic protists - Ciliophora 1700-1749             0.241       1724.
-#  8 Heterotrophic protists - Ciliophora 1750-1799             0.277       1774.
-#  9 Heterotrophic protists - Ciliophora 1800-1849             0.311       1824.
-# 10 Heterotrophic protists - Ciliophora 1850-1899             0.316       1874.
-# 11 Heterotrophic protists - Ciliophora 1900-1949             0.390       1924.
-# 12 Heterotrophic protists - Ciliophora 1950-1999             0.446       1974.
-# 13 Heterotrophic protists - Ciliophora 2000-2049             0.505       2024.
+
+#   trophic_level_tax_group         date_window_50yrs avg_abund median_year
+# 1 Heterotrophic protists - Cilio… 1600-1649             0.220       1624.
+# 2 Heterotrophic protists - Cilio… 1650-1699             0.221       1674.
+# 3 Heterotrophic protists - Cilio… 1700-1749             0.241       1724.
+# 4 Heterotrophic protists - Cilio… 1750-1799             0.277       1774.
+# 5 Heterotrophic protists - Cilio… 1800-1849             0.311       1824.
+# 6 Heterotrophic protists - Cilio… 1850-1899             0.316       1874.
+# 7 Heterotrophic protists - Cilio… 1900-1949             0.390       1924.
+# 8 Heterotrophic protists - Cilio… 1950-1999             0.446       1974.
+# 9 Heterotrophic protists - Cilio… 2000-2049             0.505       2024.
 
 
 hetero_LME %>% filter(taxa=="Ciliophora") %>% select(term, Value, fish)
@@ -4494,7 +4415,7 @@ nmds_values <-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-Unive
 nmds_values %>% filter(state=="Washington") %>% pull(MDS1) %>% range(.) %>% round(digits=2)
 # [1] -1.08  0.41
 nmds_values %>% filter(state%in% c("California","Wyoming")) %>% pull(MDS1) %>% range(.) %>% round(digits=2)
-#[1] -1.43  0.46
+# [1] -0.66  1.25 
 
 
 # homogenization
@@ -4527,28 +4448,38 @@ zoop_LME<-read.csv("/Users/jordanscheibe/Library/CloudStorage/OneDrive-Universit
 zoop_LME %>% filter(pval0.05=="Yes" & Value > 0.04 | Value < (-0.04)) %>% pull(taxa) %>% unique(.)
 #[1] "Hesperodiaptomus" "Daphnia spp."     "Leptodiaptomus" 
 
+
+avg_lake_50yrs<-all_trophic_top %>% 
+        mutate(date_window_50yrs=cut(date_mid_AD_combo,
+                        breaks = seq(1600, 2050, by = 50),
+                        right=F, # intervals are left closed [1400,1450)
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
+       group_by(trophic_level_tax_group, date_window_50yrs) %>% 
+        summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>%
+        ungroup() %>%
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
+        filter(complete.cases(.))
+
 ## Hesperodiaptomus ##
 
 # Look at overall abundance over time
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Hesperodiaptomus")
-#    trophic_level_tax_group        date_window_50yrs avg_abund median_year
-#  1 Zooplankton - Hesperodiaptomus 1400-1449             0.891       1424.
-#  2 Zooplankton - Hesperodiaptomus 1450-1499             0.920       1474.
-#  3 Zooplankton - Hesperodiaptomus 1500-1549             0.972       1524.
-#  4 Zooplankton - Hesperodiaptomus 1550-1599             0.979       1574.
-#  5 Zooplankton - Hesperodiaptomus 1600-1649             0.726       1624.
-#  6 Zooplankton - Hesperodiaptomus 1650-1699             0.747       1674.
-#  7 Zooplankton - Hesperodiaptomus 1700-1749             0.875       1724.
-#  8 Zooplankton - Hesperodiaptomus 1750-1799             0.809       1774.
-#  9 Zooplankton - Hesperodiaptomus 1800-1849             0.894       1824.
-# 10 Zooplankton - Hesperodiaptomus 1850-1899             0.752       1874.
-# 11 Zooplankton - Hesperodiaptomus 1900-1949             0.623       1924.
-# 12 Zooplankton - Hesperodiaptomus 1950-1999             0.451       1974.
-# 13 Zooplankton - Hesperodiaptomus 2000-2049             0.342       2024.
+#   trophic_level_tax_group        date_window_50yrs avg_abund median_year
+# 1 Zooplankton - Hesperodiaptomus 1600-1649             0.726       1624.
+# 2 Zooplankton - Hesperodiaptomus 1650-1699             0.747       1674.
+# 3 Zooplankton - Hesperodiaptomus 1700-1749             0.875       1724.
+# 4 Zooplankton - Hesperodiaptomus 1750-1799             0.809       1774.
+# 5 Zooplankton - Hesperodiaptomus 1800-1849             0.894       1824.
+# 6 Zooplankton - Hesperodiaptomus 1850-1899             0.752       1874.
+# 7 Zooplankton - Hesperodiaptomus 1900-1949             0.623       1924.
+# 8 Zooplankton - Hesperodiaptomus 1950-1999             0.451       1974.
+# 9 Zooplankton - Hesperodiaptomus 2000-2049             0.342       2024.
 
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Hesperodiaptomus") %>% filter(median_year<1900) %>% pull(avg_abund) %>% mean(.) %>% round(digits=3) %>%  `*`(100) 
-# [1] 85.6
+# [1] 80.0
 
 zoop_LME %>% filter(taxa=="Hesperodiaptomus") %>% select(term, Value, fish)
 #              term  Value     fish
@@ -4593,20 +4524,16 @@ zoop_LME %>% filter(taxa=="Daphnia spp.") %>% select(term, Value, fish)
 
 # Look at overall abundance over time
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Leptodiaptomus")
-#    trophic_level_tax_group      date_window_50yrs avg_abund median_year
-#  1 Zooplankton - Leptodiaptomus 1400-1449           0.00416       1424.
-#  2 Zooplankton - Leptodiaptomus 1450-1499           0.0296        1474.
-#  3 Zooplankton - Leptodiaptomus 1500-1549           0.0105        1524.
-#  4 Zooplankton - Leptodiaptomus 1550-1599           0.00498       1574.
-#  5 Zooplankton - Leptodiaptomus 1600-1649           0.212         1624.
-#  6 Zooplankton - Leptodiaptomus 1650-1699           0.163         1674.
-#  7 Zooplankton - Leptodiaptomus 1700-1749           0.0735        1724.
-#  8 Zooplankton - Leptodiaptomus 1750-1799           0.0860        1774.
-#  9 Zooplankton - Leptodiaptomus 1800-1849           0.0308        1824.
-# 10 Zooplankton - Leptodiaptomus 1850-1899           0.117         1874.
-# 11 Zooplankton - Leptodiaptomus 1900-1949           0.181         1924.
-# 12 Zooplankton - Leptodiaptomus 1950-1999           0.177         1974.
-# 13 Zooplankton - Leptodiaptomus 2000-2049           0.152         2024.
+#   trophic_level_tax_group      date_window_50yrs avg_abund median_year
+# 1 Zooplankton - Leptodiaptomus 1600-1649            0.212        1624.
+# 2 Zooplankton - Leptodiaptomus 1650-1699            0.163        1674.
+# 3 Zooplankton - Leptodiaptomus 1700-1749            0.0735       1724.
+# 4 Zooplankton - Leptodiaptomus 1750-1799            0.0860       1774.
+# 5 Zooplankton - Leptodiaptomus 1800-1849            0.0308       1824.
+# 6 Zooplankton - Leptodiaptomus 1850-1899            0.117        1874.
+# 7 Zooplankton - Leptodiaptomus 1900-1949            0.181        1924.
+# 8 Zooplankton - Leptodiaptomus 1950-1999            0.177        1974.
+# 9 Zooplankton - Leptodiaptomus 2000-2049            0.152        2024.
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Leptodiaptomus") %>% pull(avg_abund) %>% mean(.) %>% round(digits=3) %>%  `*`(100) 
 #[1] 9.6
@@ -4829,92 +4756,86 @@ ggsave("3_Figures/FigX_clustered_rel_abund_lake_fish_top_lepto.png", height=6.5,
 #### i. Stats for ms - fish vs fishless - need to update with 1600 cut off!
 ##### L3 Zooplankton
 ```{r}
+avg_lake_50yrs<-all_trophic_top %>% 
+        mutate(date_window_50yrs=cut(date_mid_AD_combo,
+                        breaks = seq(1600, 2050, by = 50),
+                        right=F, # intervals are left closed [1400,1450)
+                        labels = paste(seq(1600, 2000, by = 50), 
+                                       seq(1649, 2049, by = 50), sep = "-")))%>%
+       group_by(trophic_level_tax_group, date_window_50yrs, fish) %>% 
+        summarize(avg_abund=mean(abundance),
+                  median_year = median(as.numeric(unlist(strsplit(unique(as.character(date_window_50yrs)), "-"))))) %>%
+        ungroup() %>% 
+        # the relative abundance for prior to 1600 is listed as NA - so remove it here
+        filter(complete.cases(.))
+
+
 ### Hesperodiaptomus ### 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Hesperodiaptomus" & fish ==0)
-#    trophic_level_tax_group        date_window_50yrs  fish avg_abund median_year
-#    <fct>                          <fct>             <dbl>     <dbl>       <dbl>
-#  1 Zooplankton - Hesperodiaptomus 1400-1449             0     0.800       1424.
-#  2 Zooplankton - Hesperodiaptomus 1450-1499             0     0.904       1474.
-#  3 Zooplankton - Hesperodiaptomus 1500-1549             0     0.956       1524.
-#  4 Zooplankton - Hesperodiaptomus 1550-1599             0     0.985       1574.
-#  5 Zooplankton - Hesperodiaptomus 1600-1649             0     0.941       1624.
-#  6 Zooplankton - Hesperodiaptomus 1650-1699             0     0.887       1674.
-#  7 Zooplankton - Hesperodiaptomus 1700-1749             0     0.970       1724.
-#  8 Zooplankton - Hesperodiaptomus 1750-1799             0     0.984       1774.
-#  9 Zooplankton - Hesperodiaptomus 1800-1849             0     0.976       1824.
-# 10 Zooplankton - Hesperodiaptomus 1850-1899             0     0.942       1874.
-# 11 Zooplankton - Hesperodiaptomus 1900-1949             0     0.947       1924.
-# 12 Zooplankton - Hesperodiaptomus 1950-1999             0     0.891       1974.
-# 13 Zooplankton - Hesperodiaptomus 2000-2049             0     0.690       2024.
+#   trophic_level_tax_group   date_window_50yrs  fish avg_abund median_year
+# 1 Zooplankton - Hesperodia… 1600-1649             0     0.941       1624.
+# 2 Zooplankton - Hesperodia… 1650-1699             0     0.887       1674.
+# 3 Zooplankton - Hesperodia… 1700-1749             0     0.970       1724.
+# 4 Zooplankton - Hesperodia… 1750-1799             0     0.984       1774.
+# 5 Zooplankton - Hesperodia… 1800-1849             0     0.976       1824.
+# 6 Zooplankton - Hesperodia… 1850-1899             0     0.942       1874.
+# 7 Zooplankton - Hesperodia… 1900-1949             0     0.947       1924.
+# 8 Zooplankton - Hesperodia… 1950-1999             0     0.891       1974.
+# 9 Zooplankton - Hesperodia… 2000-2049             0     0.690       2024.
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Hesperodiaptomus" & fish ==0) %>% filter(median_year<2000) %>% pull(avg_abund) %>% mean(.) %>% round(digits=3) %>%  `*`(100) 
-#93.2
+# 94.2
 
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Hesperodiaptomus" & fish ==1)
-#    trophic_level_tax_group        date_window_50yrs  fish avg_abund median_year
-#    <fct>                          <fct>             <dbl>     <dbl>       <dbl>
-#  1 Zooplankton - Hesperodiaptomus 1400-1449             1     0.982       1424.
-#  2 Zooplankton - Hesperodiaptomus 1450-1499             1     0.934       1474.
-#  3 Zooplankton - Hesperodiaptomus 1500-1549             1     0.983       1524.
-#  4 Zooplankton - Hesperodiaptomus 1550-1599             1     0.972       1574.
-#  5 Zooplankton - Hesperodiaptomus 1600-1649             1     0.577       1624.
-#  6 Zooplankton - Hesperodiaptomus 1650-1699             1     0.670       1674.
-#  7 Zooplankton - Hesperodiaptomus 1700-1749             1     0.827       1724.
-#  8 Zooplankton - Hesperodiaptomus 1750-1799             1     0.687       1774.
-#  9 Zooplankton - Hesperodiaptomus 1800-1849             1     0.806       1824.
-# 10 Zooplankton - Hesperodiaptomus 1850-1899             1     0.586       1874.
-# 11 Zooplankton - Hesperodiaptomus 1900-1949             1     0.421       1924.
-# 12 Zooplankton - Hesperodiaptomus 1950-1999             1     0.225       1974.
-# 13 Zooplankton - Hesperodiaptomus 2000-2049             1     0.205       2024.
+#   trophic_level_tax_group   date_window_50yrs  fish avg_abund median_year
+# 1 Zooplankton - Hesperodia… 1600-1649             1     0.577       1624.
+# 2 Zooplankton - Hesperodia… 1650-1699             1     0.670       1674.
+# 3 Zooplankton - Hesperodia… 1700-1749             1     0.827       1724.
+# 4 Zooplankton - Hesperodia… 1750-1799             1     0.687       1774.
+# 5 Zooplankton - Hesperodia… 1800-1849             1     0.806       1824.
+# 6 Zooplankton - Hesperodia… 1850-1899             1     0.586       1874.
+# 7 Zooplankton - Hesperodia… 1900-1949             1     0.421       1924.
+# 8 Zooplankton - Hesperodia… 1950-1999             1     0.225       1974.
+# 9 Zooplankton - Hesperodia… 2000-2049             1     0.205       2024.
 
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Hesperodiaptomus" & fish ==1) %>% filter(median_year<1900) %>% pull(avg_abund) %>% mean(.) %>% round(digits=3) %>%  `*`(100) 
-# [1] 80.2
+# [1]  69.2
 
-### Daphina spp. ###
+### Daphnia spp. ###
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Daphnia spp." & fish ==0)
-#    trophic_level_tax_group    date_window_50yrs  fish avg_abund median_year
-#    <fct>                      <fct>             <dbl>     <dbl>       <dbl>
-#  1 Zooplankton - Daphnia spp. 1400-1449             0  0.000143       1424.
-#  2 Zooplankton - Daphnia spp. 1450-1499             0  0.000644       1474.
-#  3 Zooplankton - Daphnia spp. 1500-1549             0  0.000827       1524.
-#  4 Zooplankton - Daphnia spp. 1550-1599             0  0.00182        1574.
-#  5 Zooplankton - Daphnia spp. 1600-1649             0  0.0461         1624.
-#  6 Zooplankton - Daphnia spp. 1650-1699             0  0.0103         1674.
-#  7 Zooplankton - Daphnia spp. 1700-1749             0  0.00420        1724.
-#  8 Zooplankton - Daphnia spp. 1750-1799             0  0.00176        1774.
-#  9 Zooplankton - Daphnia spp. 1800-1849             0  0.00606        1824.
-# 10 Zooplankton - Daphnia spp. 1850-1899             0  0.00801        1874.
-# 11 Zooplankton - Daphnia spp. 1900-1949             0  0.00410        1924.
-# 12 Zooplankton - Daphnia spp. 1950-1999             0  0.00433        1974.
-# 13 Zooplankton - Daphnia spp. 2000-2049             0  0.000455       2024.
+#   trophic_level_tax_group   date_window_50yrs  fish avg_abund median_year
+# 1 Zooplankton - Daphnia sp… 1600-1649             0  0.0461         1624.
+# 2 Zooplankton - Daphnia sp… 1650-1699             0  0.0103         1674.
+# 3 Zooplankton - Daphnia sp… 1700-1749             0  0.00420        1724.
+# 4 Zooplankton - Daphnia sp… 1750-1799             0  0.00176        1774.
+# 5 Zooplankton - Daphnia sp… 1800-1849             0  0.00606        1824.
+# 6 Zooplankton - Daphnia sp… 1850-1899             0  0.00801        1874.
+# 7 Zooplankton - Daphnia sp… 1900-1949             0  0.00410        1924.
+# 8 Zooplankton - Daphnia sp… 1950-1999             0  0.00433        1974.
+# 9 Zooplankton - Daphnia sp… 2000-2049             0  0.000455       2024
 
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Daphnia spp." & fish ==0)  %>% pull(avg_abund) %>% mean(.) %>% round(digits=4) %>%  `*`(100) 
-#[1] 0.7 or 0.68
+#[1]  0.95
 
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Daphnia spp." & fish ==1)
-#    trophic_level_tax_group    date_window_50yrs  fish avg_abund median_year
-#    <fct>                      <fct>             <dbl>     <dbl>       <dbl>
-#  1 Zooplankton - Daphnia spp. 1400-1449             1 0               1424.
-#  2 Zooplankton - Daphnia spp. 1450-1499             1 0.000208        1474.
-#  3 Zooplankton - Daphnia spp. 1500-1549             1 0.0000350       1524.
-#  4 Zooplankton - Daphnia spp. 1550-1599             1 0.000139        1574.
-#  5 Zooplankton - Daphnia spp. 1600-1649             1 0.00263         1624.
-#  6 Zooplankton - Daphnia spp. 1650-1699             1 0.0181          1674.
-#  7 Zooplankton - Daphnia spp. 1700-1749             1 0.0139          1724.
-#  8 Zooplankton - Daphnia spp. 1750-1799             1 0.0128          1774.
-#  9 Zooplankton - Daphnia spp. 1800-1849             1 0.00886         1824.
-# 10 Zooplankton - Daphnia spp. 1850-1899             1 0.00847         1874.
-# 11 Zooplankton - Daphnia spp. 1900-1949             1 0.0740          1924.
-# 12 Zooplankton - Daphnia spp. 1950-1999             1 0.256           1974.
-# 13 Zooplankton - Daphnia spp. 2000-2049             1 0.257           2024.
+#   trophic_level_tax_group   date_window_50yrs  fish avg_abund median_year
+# 1 Zooplankton - Daphnia sp… 1600-1649             1   0.00263       1624.
+# 2 Zooplankton - Daphnia sp… 1650-1699             1   0.0181        1674.
+# 3 Zooplankton - Daphnia sp… 1700-1749             1   0.0139        1724.
+# 4 Zooplankton - Daphnia sp… 1750-1799             1   0.0128        1774.
+# 5 Zooplankton - Daphnia sp… 1800-1849             1   0.00886       1824.
+# 6 Zooplankton - Daphnia sp… 1850-1899             1   0.00847       1874.
+# 7 Zooplankton - Daphnia sp… 1900-1949             1   0.0740        1924.
+# 8 Zooplankton - Daphnia sp… 1950-1999             1   0.256         1974.
+# 9 Zooplankton - Daphnia sp… 2000-2049             1   0.257         2024.
 
 
 avg_lake_50yrs %>% filter(trophic_level_tax_group=="Zooplankton - Daphnia spp." & fish ==1) %>% filter(median_year<1900) %>% pull(avg_abund) %>% mean(.) %>% round(digits=4) %>%  `*`(100) 
-# 0.7 or 0.65
+# 1.08
 
 ```
 
